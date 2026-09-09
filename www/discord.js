@@ -213,7 +213,10 @@ async function viewChat(v) {
   $('#cmsg').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendCurrent(); } });
   $('#cfile').onchange = async e => {
     const f = e.target.files[0]; if (!f) return;
-    const b64 = btoa(String.fromCharCode(...new Uint8Array(await f.arrayBuffer())));
+    const buf = new Uint8Array(await f.arrayBuffer());
+    let bin = '';
+    for (let i = 0; i < buf.length; i += 8192) bin += String.fromCharCode(...buf.subarray(i, i + 8192)); // chunked: spread caps at ~65k args
+    const b64 = btoa(bin);
     try {
       await bapi(`/discord/channels/${W.channel.id}/messages`, { method: 'POST', body: {
         content: $('#cmsg').value || undefined,
@@ -538,6 +541,7 @@ async function viewVoice(v) {
         const f = ev.target.files[0]; if (!f) return;
         const rd = new FileReader();
         rd.onload = async () => {
+          if (f.size > 20 * 1024 * 1024) return tt('file too large (>20MB)', true);
           tt('playing… (transcode may take a few s)');
           try {
             await bapi(`/gateway/${W.me.id}/voice/play`, { method: 'POST', body: { guild_id: W.guild.id, channel_id: cid, audio_base64: btoa(rd.result), filename: f.name } });

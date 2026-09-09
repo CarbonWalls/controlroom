@@ -183,6 +183,7 @@ function bridgeStart() {
   if (bridgePid()) return { ok: true, msg: 'bridge starting…' };
   const out = fs.openSync(path.join(ROOT, '.tmp', 'bridge.log'), 'a');
   bridgeProc = spawn('bash', ['-c', BRIDGE_START], { cwd: BRIDGE_DIR, detached: true, stdio: ['ignore', out, out] });
+  bridgeProc.on('error', e => { console.error('[bridge] spawn failed:', e.message); bridgeProc = null; });
   bridgeProc.unref(); fs.closeSync(out);
   bridgeProc.on('exit', () => { bridgeProc = null; });
   return { ok: true, msg: 'bridge starting on port ' + BRIDGE_PORT };
@@ -194,15 +195,21 @@ function bridgeStopProc() {
 }
 
 /* ---------- mercury (hum-testing) control ---------- */
+// argv must look like [python*, -u?, .../mercury3.py] — never match editors
+// or grep lines that merely CONTAIN the script path (wrong-kill hazard)
+function isMercuryArgv(argv) {
+  const isPython = /python(?:\d+(?:\.\d+)?)?$/.test(argv[0] || '');
+  const runsScript = argv.some(a => a === HUM_SCRIPT || a.endsWith('/' + HUM_SCRIPT));
+  return isPython && runsScript;
+}
 function mercuryPid() {
   try {
     const raw = fs.readFileSync(HUM_LOCK, 'utf8').trim();
     const pid = parseInt(raw, 10);
-    // confirm it's actually mercury3, not a recycled pid
     if (pidAlive(pid)) {
       try {
-        const cl = fs.readFileSync(`/proc/${pid}/cmdline`, 'utf8');
-        if (cl.includes(HUM_SCRIPT)) return pid;
+        const argv = fs.readFileSync(`/proc/${pid}/cmdline`, 'utf8').split('\0').filter(Boolean);
+        if (isMercuryArgv(argv)) return pid;
       } catch { if (process.platform !== 'linux') return pid; }
     }
   } catch {}
@@ -212,7 +219,8 @@ function mercuryPid() {
     for (const d of fs.readdirSync('/proc')) {
       if (!/^\d+$/.test(d)) continue;
       try {
-        if (fs.readFileSync(`/proc/${d}/cmdline`, 'utf8').includes(HUM_SCRIPT)) return parseInt(d, 10);
+        const argv = fs.readFileSync(`/proc/${d}/cmdline`, 'utf8').split('\0').filter(Boolean);
+        if (isMercuryArgv(argv)) return parseInt(d, 10);
       } catch {}
     }
   } catch {}
@@ -538,5 +546,6 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
+fs.mkdirSync(path.join(ROOT, '.tmp'), { recursive: true });
 startLogFollow();
 server.listen(PORT, '127.0.0.1', () => console.log(`controlroom on http://127.0.0.1:${PORT}`));

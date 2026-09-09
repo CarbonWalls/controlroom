@@ -87,12 +87,12 @@ function renderStatus(st) {
           tries++;
           const s2 = await api('/api/status').catch(() => null);
           if (s2 && s2.bridge.up) { clearInterval(t); refresh(); mountWsReset(); }
-          else if (tries > 20) { clearInterval(t); $('#brHint').textContent = 'bridge did not come up — check .tmp/bridge.log'; }
+          else if (tries > 20) { clearInterval(t); const h = $('#brHint'); if (h) h.textContent = 'bridge did not come up — check .tmp/bridge.log'; }
         }, 1000);
-      } catch (e) { $('#brHint').textContent = e.message; }
+      } catch (e) { const h = $('#brHint'); if (h) h.textContent = e.message; }
     });
     bindIf('brStopBtn', async () => {
-      await api('/api/bridge/lifecycle', { method: 'POST', body: JSON.stringify({ action: 'stop' }) }).catch(e => tt(e.message, true));
+      await api('/api/bridge/lifecycle', { method: 'POST', body: JSON.stringify({ action: 'stop' }) }).catch(e => toast(e.message, true));
       refresh();
     });
   }

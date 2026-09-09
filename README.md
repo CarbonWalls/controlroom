@@ -9,13 +9,15 @@ single self-contained web app for running a discord **bot** (vendored bridge man
 ```
 git clone https://github.com/CarbonWalls/controlroom.git
 cd controlroom
-npm i                      # ws, ffmpeg-static, @snazzah/davey for the vendored bridge
+npm i                      # ws + @snazzah/davey (voice E2EE) for the vendored bridge
 cp bridge/.env.example bridge/.env && chmod 600 bridge/.env
 #   → edit bridge/.env: TOKEN_BOT=<bot token>   (bot token: discord dev portal)
 cp mercury/.env.template mercury/.env && chmod 600 mercury/.env   # optional
 #   → mercury/.env: DISCORD_TOKEN=<user token>  (selfbot — ban risk is yours)
 ./start.sh                 # panel on http://127.0.0.1:8800
 ```
+
+voice needs `ffmpeg` on PATH (termux: `pkg install ffmpeg`; debian/ubuntu: `apt install ffmpeg`; windows: install ffmpeg or set `FFMPEG_PATH`).
 
 then open the panel → bridge tab → **start bridge**. that's it: the panel spawns the vendored bridge (port 8789) and drives it — you never touch a second terminal.
 

@@ -65,11 +65,37 @@ function renderStatus(st) {
   bindIf('humStopBtn', () => act('/api/hum/stop'));
   bindIf('humRestartBtn', async () => { await act('/api/hum/stop'); await new Promise(r => setTimeout(r, 1200)); await act('/api/hum/start'); });
 
-  // bridge status strip above the workspace
+  // bridge status strip above the workspace — with lifecycle control
   const ws = $('#wsStatus');
-  if (ws) ws.innerHTML = st.bridge.up
-    ? `<span class="chip on"><i></i><span class="chip-t">bridge :${st.bridge.port} · ${st.bridge.sessions} session(s) · ${fmtUp(st.bridge.uptime_s)} up · ${st.bridge.memory_mb}MB</span></span>`
-    : '<span class="chip off"><i></i>bridge offline</span>';
+  if (ws) {
+    const pill = st.bridge.up
+      ? `<span class="chip on"><i></i><span class="chip-t">bridge :${st.bridge.port} · ${st.bridge.sessions} session(s) · ${fmtUp(st.bridge.uptime_s)} up · ${st.bridge.memory_mb}MB</span></span>`
+      : '<span class="chip off"><i></i>bridge offline</span>';
+    const act = st.bridge.up
+      ? `<button class="btn danger" id="brStopBtn">stop bridge</button>`
+      : `<button class="btn primary" id="brStartBtn">${st.bridge.script ? 'start bridge' : 'bridge.js missing'}</button>`;
+    ws.innerHTML = pill + act + `<span class="hint" id="brHint"></span>`;
+    bindIf('brStartBtn', async () => {
+      $('#brHint').textContent = 'starting…';
+      try {
+        const r = await api('/api/bridge/lifecycle', { method: 'POST', body: JSON.stringify({ action: 'start' }) });
+        if (!r.ok) throw new Error(r.error || 'failed');
+        $('#brHint').textContent = 'booting bridge…';
+        // wait for the port to come up, then the workspace mounts itself via refresh()
+        let tries = 0;
+        const t = setInterval(async () => {
+          tries++;
+          const s2 = await api('/api/status').catch(() => null);
+          if (s2 && s2.bridge.up) { clearInterval(t); refresh(); mountWsReset(); }
+          else if (tries > 20) { clearInterval(t); $('#brHint').textContent = 'bridge did not come up — check .tmp/bridge.log'; }
+        }, 1000);
+      } catch (e) { $('#brHint').textContent = e.message; }
+    });
+    bindIf('brStopBtn', async () => {
+      await api('/api/bridge/lifecycle', { method: 'POST', body: JSON.stringify({ action: 'stop' }) }).catch(e => tt(e.message, true));
+      refresh();
+    });
+  }
 }
 function svcCard(name, role, on, stats) {
   return `<div class="svc ${on ? 'is-on' : ''}">
@@ -198,9 +224,10 @@ $('#memSave').onclick = async () => {
 };
 
 /* ---- workspace mount ---- */
+function mountWsReset() { wsMounted = false; mountWs(); }
 function mountWs() {
+  if (!STATUS || !STATUS.bridge.up) { $('#wsHost').innerHTML = '<div class="empty">bridge offline — hit "start bridge" above.</div>'; return; }
   if (wsMounted) { window.crWorkspace.reload && window.crWorkspace.reload(); return; }
-  if (!STATUS || !STATUS.bridge.up) { $('#wsHost').innerHTML = '<div class="empty">bridge offline — start bot-mn-1 (node bridge.js), then reopen this tab.</div>'; return; }
   wsMounted = true;
   window.crWorkspace.mount($('#wsHost'));
 }

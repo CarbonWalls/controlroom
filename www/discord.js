@@ -219,12 +219,32 @@ async function loadChannels() {
 }
 function paintChans() {
   const el = $('#wsChans'); if (!el) return;
-  const rows = [];
+  const byParent = new Map();
+  const cats = W.channels.filter(c => c.type === 4);
+  const orphans = [];
   for (const c of W.channels) {
-    if (c.type === 4 || !c.parent_id) continue;
-    rows.push(`<div class="chan ${W.channel?.id === c.id ? 'sel' : ''}" data-id="${c.id}"><span class="ci">${ic(chanIc(c), 14)}</span><span class="cn">${esc(c.name)}</span></div>`);
+    if (c.type === 4) continue;
+    if (c.parent_id && byParent.has(c.parent_id)) byParent.get(c.parent_id).push(c);
+    else if (c.parent_id && cats.some(k => k.id === c.parent_id)) byParent.set(c.parent_id, [c]);
+    else orphans.push(c);
+  }
+  const rows = [];
+  const row = c => `<div class="chan ${W.channel?.id === c.id ? 'sel' : ''}" data-id="${c.id}"><span class="ci">${ic(chanIc(c), 14)}</span><span class="cn">${esc(c.name)}</span></div>`;
+  for (const c of orphans) rows.push(row(c));
+  for (const cat of cats) {
+    const kids = byParent.get(cat.id) || [];
+    if (!kids.length) continue;
+    rows.push(`<div class="cat-row" data-cat="${cat.id}"><span class="cat-caret">${ic('caret', 12)}</span><span class="cat-name">${esc(cat.name)}</span></div>`);
+    rows.push(`<div class="cat-group" data-catg="${cat.id}">` + kids.map(row).join('') + `</div>`);
   }
   el.innerHTML = rows.join('') || '<div class="empty">no channels visible</div>';
+  el.querySelectorAll('.cat-row').forEach(cr => {
+    cr.onclick = () => {
+      const g = el.querySelector(`[data-catg="${cr.dataset.cat}"]`);
+      if (g) g.style.display = g.style.display === 'none' ? '' : 'none';
+      cr.classList.toggle('shut');
+    };
+  });
   el.onclick = e => {
     const d = e.target.closest('.chan'); if (!d) return;
     W.channel = W.channels.find(c => c.id === d.dataset.id);
@@ -271,6 +291,56 @@ async function viewChat(v) {
   const longTxt = t => (t && t.length > 400) ? 'data-clamp="1"' : '';
   const ta = $('#cmsg');
   const paintCount = bindCounter(ta);
+  // @mention autocomplete: fires on '@' + typing, keyboard navigable
+  let acBox = null, acItems = [], acIdx = -1, acStart = -1;
+  const ensureAcBox = () => {
+    if (!acBox) {
+      acBox = document.createElement('div');
+      acBox.className = 'ac-box'; acBox.hidden = true;
+      ta.closest('.composer').appendChild(acBox);
+    }
+    return acBox;
+  };
+  const closeAc = () => { if (acBox) { acBox.hidden = true; acBox.innerHTML = ''; } acItems = []; acIdx = -1; acStart = -1; };
+  const openAc = q => {
+    const members = [...W.members.values()];
+    if (!members.length) return closeAc();
+    const ql = q.toLowerCase();
+    acItems = members.filter(mb => !ql || mb.user?.username?.toLowerCase().includes(ql) || (mb.nick || '').toLowerCase().includes(ql)).slice(0, 6);
+    if (!acItems.length) return closeAc();
+    const box = ensureAcBox();
+    acIdx = 0;
+    box.innerHTML = acItems.map((mb, i) => `<div class="ac-item ${i === 0 ? 'sel' : ''}" data-i="${i}"><img class="m-av sm" src="${esc(avatarUrl(mb.user))}"> <b>${esc(mb.nick || mb.user.username)}</b> <span class="count">${esc(mb.user.username)}</span></div>`).join('');
+    box.hidden = false;
+    box.onclick = e => { const it = e.target.closest('.ac-item'); if (it) applyAc(+it.dataset.i); };
+  };
+  const applyAc = i => {
+    const mb = acItems[i]; if (!mb) return closeAc();
+    const name = mb.nick || mb.user.username;
+    const before = ta.value.slice(0, acStart), after = ta.value.slice(ta.selectionStart);
+    ta.value = before + '@' + name + ' ' + after.replace(/^\S*\s?/, '');
+    closeAc(); paintCount(); ta.focus();
+  };
+  ta.addEventListener('input', () => {
+    const pos = ta.selectionStart;
+    const txt = ta.value.slice(0, pos);
+    const m = /@([a-zA-Z0-9_.]*)$/.exec(txt);
+    if (m) { acStart = pos - m[0].length; openAc(m[1]); } else closeAc();
+  });
+  ta.addEventListener('keydown', e => {
+    if (acBox && !acBox.hidden && acItems.length) {
+      if (e.key === 'ArrowDown') { e.preventDefault(); acIdx = (acIdx + 1) % acItems.length; paintAcSel(); return; }
+      if (e.key === 'ArrowUp') { e.preventDefault(); acIdx = (acIdx - 1 + acItems.length) % acItems.length; paintAcSel(); return; }
+      if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); e.stopPropagation(); applyAc(acIdx); return; }
+      if (e.key === 'Escape') { closeAc(); return; }
+    } else if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault(); sendCurrent();
+    }
+  });
+  ta.addEventListener('blur', () => setTimeout(closeAc, 150));
+  function paintAcSel() {
+    acBox.querySelectorAll('.ac-item').forEach((el2, i) => el2.classList.toggle('sel', i === acIdx));
+  }
   const doLoad = async () => {
     const msgs = await bapi(`/discord/channels/${W.channel.id}/messages?limit=100`);
     W.messages = Array.isArray(msgs) ? msgs.reverse() : [];
@@ -282,7 +352,6 @@ async function viewChat(v) {
   $('#chPurge').onclick = () => confirmModal('purge bot messages', `delete every message authored by ${W.me.username} in #${W.channel.name}?`, bulkDeleteBot);
   await doLoad();
   $('#csend').onclick = sendCurrent;
-  ta.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendCurrent(); } });
   $('#cfile').onchange = async e => {
     const f = e.target.files[0]; if (!f) return;
     if (f.size > 8 * 1024 * 1024) { tt('file too large (>8MB)', true); e.target.value = ''; return; }
@@ -322,11 +391,18 @@ async function viewChat(v) {
       const bot = m.author?.id === W.me.id;
       const atts = (m.attachments || []).map(a => a.image ? `<a href="${esc(a.url)}" target="_blank"><img class="att-img" src="${esc(a.url)}?width=320" loading="lazy"></a>` : `<span class="att-chip">${ic('file', 12)} ${esc(a.filename || 'file')}</span>`).join(' ');
       const acts = `${m._failed ? `<button class="mic" data-a="retry">${ic('refresh', 12)} retry</button>` : ''}<button class="mic" data-a="reply" title="reply">${ic('reply', 13)}</button>${bot && !m._pending && !m._failed ? `<button class="mic" data-a="del" title="delete">${ic('trash', 13)}</button>` : ''}`;
+      let ref = m._reply;
+      if (!ref && m.message_reference && m.message_reference.message_id) {
+        const orig = W.messages.find(x => x.id === m.message_reference.message_id);
+        ref = { username: orig?.author?.username || '?', content: orig?.content || '' };
+      }
+      const refHtml = ref ? `<div class="m-ref">${ic('reply', 12)} <b>${esc(ref.username)}</b> ${esc(ref.content.slice(0, 80) || '(media)')}</div>` : '';
       return `<div class="msg ${bot ? 'own' : ''} ${m._pending ? 'pending' : ''} ${m._failed ? 'failed' : ''} ${grouped ? 'grouped' : ''}" data-id="${m.id}">
         ${grouped ? '<span class="m-av ghost"></span>' : `<img class="m-av" src="${esc(avatarUrl(m.author))}" loading="lazy">`}
         <div class="m-body">
           <div class="m-top" ${grouped ? 'hidden' : ''}><b>${esc(m.author?.username || '?')}</b><span class="m-t">${m._pending ? 'sending…' : m._failed ? 'failed — ' + esc(m._error || '') : new Date(m.timestamp).toLocaleTimeString()}</span>
             <span class="m-acts">${acts}</span></div>
+          ${refHtml}
           <div class="m-txt" ${longTxt(m.content)}>${esc(m.content || '')} ${atts}</div>
         </div></div>`;
     }).join('');
@@ -370,10 +446,15 @@ async function viewChat(v) {
     const content = ta.value.trim();
     if (!content || content.length > DISCORD_MSG_MAX) return;
     const body = { content };
-    if (ta.dataset.reply) body.message_reference = { message_id: ta.dataset.reply };
+    let replyMeta = null;
+    if (ta.dataset.reply) {
+      const orig = W.messages.find(m => m.id === ta.dataset.reply);
+      replyMeta = orig ? { id: orig.id, username: orig.author?.username || '?', content: orig.content || '' } : null;
+      body.message_reference = { message_id: ta.dataset.reply };
+    }
     // optimistic: clear input, paint a pending bubble, then settle
     ta.value = ''; paintCount(); delete ta.dataset.reply; renderReplyChip();
-    const tmp = { id: 'tmp' + Date.now(), content, author: { id: W.me.id, username: W.me.username, avatar: W.me.avatar }, timestamp: new Date().toISOString(), attachments: [], _pending: true };
+    const tmp = { id: 'tmp' + Date.now(), content, author: { id: W.me.id, username: W.me.username, avatar: W.me.avatar }, timestamp: new Date().toISOString(), attachments: [], _pending: true, _reply: replyMeta };
     W.messages.push(tmp); paintMsgs();
     try {
       const sent = await bapi(`/discord/channels/${W.channel.id}/messages`, { method: 'POST', body });
@@ -539,10 +620,27 @@ function openRolePerms(role, v) {
 async function viewChannels(v) {
   const chans = await bapi(`/discord/guilds/${W.guild.id}/channels`);
   chans.sort((a, b) => (a.type - b.type) || a.position - b.position);
+  const cats = chans.filter(c => c.type === 4);
+  const groupRow = cat => {
+    const kids = chans.filter(c => c.parent_id === cat.id);
+    return `<div class="cat-row" data-cat="${cat.id}"><span class="cat-caret">${ic('caret', 12)}</span><span class="cat-name">${esc(cat.name)}</span><span class="count">${kids.length} ${kids.length === 1 ? 'channel' : 'channels'}</span></div>` +
+      `<div class="cat-group" data-catg="${cat.id}">${kids.map(chanRow).join('') || '<div class="empty">empty category</div>'}</div>`;
+  };
+  const chanRow = c => `<div class="list-item">
+    <span class="t">${ic(chanIc(c), 14)} <b>${esc(c.name)}</b>${c.nsfw ? ' <span class="badge off">nsfw</span>' : ''}</span>
+    <span class="meta">${c.type === 4 ? '' : `<button class="ibtn" data-a="edit" data-id="${c.id}" title="edit">${ic('edit', 14)}</button><button class="ibtn" data-a="perms" data-id="${c.id}" title="permissions">${ic('shield', 14)}</button><button class="ibtn danger" data-a="del" data-id="${c.id}" title="delete">${ic('trash', 14)}</button>`}</span></div>`;
   v.innerHTML = `<div class="toolbar"><button class="btn primary" id="chNew">${ic('plus', 13)}<span>text</span></button><button class="btn" id="chNewV">${ic('plus', 13)}<span>voice</span></button></div>
-  <div class="mem-list">${chans.map(c => `<div class="list-item">
-    <span class="t">${ic(chanIc(c), 14)} <b>${esc(c.name)}</b> <span class="count">${c.parent_id ? 'in ' + esc(chans.find(x => x.id === c.parent_id)?.name || '?') : 'no category'}${c.nsfw ? ' · nsfw' : ''}</span></span>
-    <span class="meta">${c.type === 4 ? '' : `<button class="ibtn" data-a="edit" data-id="${c.id}" title="edit">${ic('edit', 14)}</button><button class="ibtn" data-a="perms" data-id="${c.id}" title="permissions">${ic('shield', 14)}</button><button class="ibtn danger" data-a="del" data-id="${c.id}" title="delete">${ic('trash', 14)}</button>`}</span></div>`).join('')}</div>`;
+  <div class="mem-list">
+    ${chans.filter(c => !c.parent_id && c.type !== 4).map(chanRow).join('')}
+    ${cats.map(groupRow).join('')}
+  </div>`;
+  v.querySelectorAll('.cat-row').forEach(cr => {
+    cr.onclick = () => {
+      const g = v.querySelector(`[data-catg="${cr.dataset.cat}"]`);
+      if (g) g.style.display = g.style.display === 'none' ? '' : 'none';
+      cr.classList.toggle('shut');
+    };
+  });
   $('#chNew').onclick = async () => { const n = await promptInput('new text channel', 'name'); if (n) { await bapi(`/discord/guilds/${W.guild.id}/channels`, { method: 'POST', body: { name: n, type: 0 } }); tt('created'); loadChannels().then(renderView); } };
   $('#chNewV').onclick = async () => { const n = await promptInput('new voice channel', 'name'); if (n) { await bapi(`/discord/guilds/${W.guild.id}/channels`, { method: 'POST', body: { name: n, type: 2 } }); tt('created'); loadChannels().then(renderView); } };
   v.onclick = e => {
@@ -564,7 +662,7 @@ async function viewChannels(v) {
     const m = modal(`perms · ${c.name}`, `
       <div class="field"><label>overwrite for</label><select id="_owtarget">${(W.roles.length ? W.roles : await bapi(`/discord/guilds/${W.guild.id}/roles`)).slice().sort((a, b) => b.position - a.position).map(r => `<option value="${r.id}">${esc(r.name)}</option>`).join('')}</select></div>
       ${searchBox('permFilter2', 'filter perms…')}<div id="permGrid2" class="perm-grid"></div>
-      <button class="btn" id="_owadd>${ic('plus', 13)}<span>queue overwrite</span></button>
+      <button class="btn" id="_owadd">${ic('plus', 13)}<span>queue overwrite</span></button>
       <div id="_owlist" class="ow-list"></div>`, `<button class="btn primary" data-ok>${ic('save', 13)}<span>save all</span></button>`);
     const grid = m.el.querySelector('#permGrid2');
     let state = { allow: 0n, deny: 0n };
@@ -604,7 +702,7 @@ async function viewScheduler(v) {
   const jobs = r.jobs || [];
   v.innerHTML = `<div class="toolbar"><button class="btn primary" id="jobNew">${ic('plus', 13)}<span>new job</span></button></div>
   <div class="mem-list">${jobs.map(j => `<div class="list-item">
-    <span class="t"><b>${esc(j.name)}</b> <span class="count">${esc(j.type === 'send_message' ? 'send' : 'presence')} · every ${everyLabel(j.intervalMs)} · ran ${j.runCount}× · ${j.lastStatus || '—'}</span></span>
+    <span class="t"><b>${esc(j.name)}</b> <span class="count">${esc(j.type === 'send_message' ? 'send' : 'presence')} · every ${everyLabel(j.intervalMs)} · ran ${j.runCount}× · ${esc(j.lastStatus || '—')}</span></span>
     <span class="meta"><button class="ibtn" data-a="toggle" data-id="${j.id}" title="${j.active ? 'pause' : 'resume'}">${ic(j.active ? 'stop' : 'play', 14)}</button><button class="ibtn danger" data-a="del" data-id="${j.id}" title="delete">${ic('trash', 14)}</button></span></div>`).join('') || `<div class="empty">${ic('clock', 14)} no jobs scheduled</div>`}</div>`;
   $('#jobNew').onclick = () => {
     const m = modal('new scheduler job', `
@@ -637,53 +735,73 @@ async function viewScheduler(v) {
 }
 function everyLabel(ms) { return ms >= 604800000 ? Math.round(ms / 604800000) + 'w' : ms >= 86400000 ? Math.round(ms / 86400000) + 'd' : ms >= 3600000 ? Math.round(ms / 3600000) + 'h' : Math.round(ms / 60000) + 'm'; }
 
-/* ---- voice ---- */
+/* ---- voice: player card for the connected channel + channel list ---- */
 async function viewVoice(v) {
   let st = { connected: false };
   try { st = await bapi(`/gateway/${W.me.id}/voice/status`); } catch {}
   const voiceChans = W.channels.filter(c => c.type === 2 || c.type === 13);
-  v.innerHTML = `<div class="toolbar">
-    <span class="chip ${st.connected ? 'on' : 'off'}"><i></i>gateway ${st.connected ? 'up' : 'down'}</span>
-    <span class="chip ${st.voice ? 'on' : 'off'}"><i></i>voice ${st.voice ? esc(st.voice.channel_name || String(st.voice.channel_id).slice(-6)) : 'idle'}</span>
-    ${st.playing ? `<span class="chip on"><i></i>playing</span>` : ''}
-    <span class="spacer"></span><button class="ibtn" id="vsRefresh" title="refresh">${ic('refresh', 15)}</button></div>
-  <div class="mem-list">${voiceChans.map(c => `<div class="list-item">
+  const cur = st.voice ? voiceChans.find(c => String(c.id) === String(st.voice.channel_id)) : null;
+  v.innerHTML = `
+  <div class="panel vplayer ${st.voice ? '' : 'idle'}">
+    <div class="panel-head"><h2>${ic('speaker', 13)} voice — ${st.voice ? '#' + esc(cur?.name || st.voice.channel_name || st.voice.channel_id) : 'not connected'}</h2>
+      <span class="badge ${st.playing ? 'on' : 'off'}">${st.playing ? 'playing' : 'idle'}</span></div>
+    <div class="panel-body">
+      <div class="vp-meta">${st.playing ? ic('play', 26) : ic('speaker', 26)}<div><b>${st.playing ? esc(st.track || 'audio stream') : st.voice ? 'connected — nothing queued' : 'not connected to any voice channel'}</b><span class="count">${st.playing ? 'streaming to voice' : st.voice ? 'pick a file below or join another channel' : 'join a channel from the list below'}</span></div></div>
+      <div class="btn-row">
+        <button class="btn primary" id="vPlay2" ${st.voice ? '' : 'disabled'}>${ic('play', 13)}<span>play file</span></button>
+        <button class="btn danger" id="vStop2" ${st.playing ? '' : 'disabled'}>${ic('stop', 13)}<span>stop</span></button>
+        <button class="btn danger" id="vLeave2" ${st.voice ? '' : 'disabled'}>${ic('x', 13)}<span>disconnect</span></button>
+      </div>
+      <div class="hint">audio is transcoded to ogg/opus by the bridge (ffmpeg) and streamed over UDP</div>
+    </div>
+  </div>
+  <div class="toolbar"><span class="count">voice channels</span><span class="spacer"></span><button class="ibtn" id="vsRefresh" title="refresh">${ic('refresh', 15)}</button></div>
+  <div class="mem-list">${voiceChans.map(c => {
+    const here = st.voice && String(c.id) === String(st.voice.channel_id);
+    return `<div class="list-item ${here ? 'sel-row' : ''}">
     <span class="t">${ic('speaker', 14)} <b>${esc(c.name)}</b></span>
-    <span class="meta"><button class="ibtn" data-a="join" data-id="${c.id}" title="join">${ic('arrowup', 14)}</button><button class="ibtn" data-a="play" data-id="${c.id}" title="play audio file">${ic('play', 14)}</button></span></div>`).join('') || `<div class="empty">${ic('speaker', 14)} no voice channels visible</div>`}</div>
-  <div class="btn-row" style="margin-top:10px"><button class="btn danger" id="vLeave">leave voice</button><button class="btn" id="vStop">${ic('stop', 13)}<span>stop playback</span></button></div>
+    <span class="meta">${here ? '' : `<button class="mic" data-a="join" data-id="${c.id}" title="join ${esc(c.name)}"><span>join</span></button>`}<button class="ibtn" data-a="play" data-id="${c.id}" title="play a file here">${ic('play', 14)}</button></span></div>`;
+  }).join('') || `<div class="empty">${ic('speaker', 14)} no voice channels visible</div>`}</div>
   <input type="file" id="vFile" accept="audio/*,video/*" hidden>`;
   $('#vsRefresh').onclick = renderView;
-  $('#vLeave').onclick = () => bapi(`/gateway/${W.me.id}/voice/leave`, { method: 'POST', body: {} }).then(() => { tt('left voice'); renderView(); }).catch(e => tt(e.message, true));
-  $('#vStop').onclick = () => bapi(`/gateway/${W.me.id}/voice/stop`, { method: 'POST', body: {} }).then(() => { tt('stopped'); renderView(); }).catch(e => tt(e.message, true));
+  const doLeave = () => bapi(`/gateway/${W.me.id}/voice/leave`, { method: 'POST', body: {} }).then(() => { tt('disconnected'); renderView(); }).catch(e => tt(e.message, true));
+  const doStop = () => bapi(`/gateway/${W.me.id}/voice/stop`, { method: 'POST', body: {} }).then(() => { tt('stopped'); renderView(); }).catch(e => tt(e.message, true));
+  bindIf2(v, 'vLeave2', doLeave); bindIf2(v, 'vStop2', doStop);
+  const pickFile = cid => {
+    $('#vFile').onchange = async ev => {
+      const f = ev.target.files[0]; if (!f) return;
+      if (f.size > 18 * 1024 * 1024) { tt('file too large (>18MB)', true); ev.target.value = ''; return; }
+      const rd = new FileReader();
+      rd.onload = async () => {
+        tt('uploading + transcoding…');
+        try {
+          const u8 = new Uint8Array(rd.result);
+          let bin = '';
+          for (let i = 0; i < u8.length; i += 8192) bin += String.fromCharCode(...u8.subarray(i, i + 8192));
+          await bapi(`/gateway/${W.me.id}/connect`, { method: 'POST', body: {} }).catch(() => {});
+          await bapi(`/gateway/${W.me.id}/voice/play`, { method: 'POST', body: { guild_id: W.guild.id, channel_id: cid, audio_base64: btoa(bin), filename: f.name } });
+          tt('playing ' + f.name); renderView();
+        } catch (err) { tt(err.message, true); }
+      };
+      rd.readAsArrayBuffer(f);
+      ev.target.value = '';
+    };
+    $('#vFile').click();
+  };
   v.onclick = async e => {
     const b = e.target.closest('.ibtn[data-join],.ibtn[data-play]'); if (!b) return;
     const cid = b.dataset.id;
     if (b.dataset.a === 'join') {
       tt('connecting…');
-      await bapi(`/gateway/${W.me.id}/connect`, { method: 'POST', body: {} }).catch(() => {}); // ensure live session (token injected server-side)
+      await bapi(`/gateway/${W.me.id}/connect`, { method: 'POST', body: {} }).catch(() => {});
       try { await bapi(`/gateway/${W.me.id}/voice/join`, { method: 'POST', body: { guild_id: W.guild.id, channel_id: cid } }); tt('joined'); renderView(); }
       catch (err) { tt(err.message, true); }
     }
-    if (b.dataset.a === 'play') {
-      $('#vFile').onchange = async ev => {
-        const f = ev.target.files[0]; if (!f) return;
-        if (f.size > 20 * 1024 * 1024) { tt('file too large (>20MB)', true); ev.target.value = ''; return; }
-        const rd = new FileReader();
-        rd.onload = async () => {
-          tt('uploading + transcoding…');
-          try {
-            await bapi(`/gateway/${W.me.id}/connect`, { method: 'POST', body: {} }).catch(() => {});
-            await bapi(`/gateway/${W.me.id}/voice/play`, { method: 'POST', body: { guild_id: W.guild.id, channel_id: cid, audio_base64: btoa(rd.result), filename: f.name } });
-            tt('playing ' + f.name); renderView();
-          } catch (err) { tt(err.message, true); }
-        };
-        rd.readAsBinaryString(f);
-        ev.target.value = '';
-      };
-      $('#vFile').click();
-    }
+    if (b.dataset.a === 'play') pickFile(cid);
   };
+  if ($('#vPlay2')) $('#vPlay2').onclick = () => pickFile(cur?.id || st.voice.channel_id);
 }
+function bindIf2(scope, id, fn) { const el = scope.querySelector('#' + id); if (el) el.onclick = fn; }
 
 /* ---- backups ---- */
 async function viewBackups(v) {

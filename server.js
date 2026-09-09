@@ -8,6 +8,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const net = require('net');
+const crypto = require('crypto');
 const { spawn, execSync } = require('child_process');
 
 const PORT = parseInt(process.env.PORT, 10) || 8800;
@@ -26,6 +27,12 @@ const HUM_PROVIDERS = path.join(HUM_DIR, 'providers.json');
 const HUM_MEMORY = path.join(HUM_DIR, 'memory.md');
 
 const BRIDGE_CANDIDATES = (process.env.BRIDGE_PORTS || '8789,8793').split(',').map(n => parseInt(n, 10));
+// where a bridge.js lives + how to run it (a cloner of THIS repo usually hasn't
+// set up bot-mn-1 separately — controlroom can own the whole stack)
+const BRIDGE_DIR = process.env.BRIDGE_DIR || path.join(HOME, 'projects/bot-mn-1');
+const BRIDGE_SCRIPT = path.join(BRIDGE_DIR, 'bridge.js');
+const BRIDGE_PORT = parseInt(process.env.BRIDGE_PORT, 10) || 8789;
+const BRIDGE_START = process.env.BRIDGE_START || `node bridge.js`;
 
 const START_TS = Date.now();
 
@@ -155,16 +162,47 @@ async function bridgeApi(method, urlPath, body = null) {
   return r;
 }
 
+/* ---------- bridge lifecycle ---------- */
+let bridgeProc = null;
+function bridgePortUp() { return bridgePort === BRIDGE_PORT; }
+function bridgePid() { return bridgeProc && !bridgeProc.killed ? bridgeProc.pid : 0; }
+function bridgeStart() {
+  if (!fs.existsSync(BRIDGE_SCRIPT)) return { ok: false, error: `bridge.js not found at ${BRIDGE_DIR} (set BRIDGE_DIR)` };
+  if (bridgePortUp()) return { ok: true, msg: 'bridge already up' };
+  if (bridgePid()) return { ok: true, msg: 'bridge starting…' };
+  const out = fs.openSync(path.join(ROOT, '.tmp', 'bridge.log'), 'a');
+  bridgeProc = spawn('bash', ['-c', BRIDGE_START], { cwd: BRIDGE_DIR, detached: true, stdio: ['ignore', out, out] });
+  bridgeProc.unref(); fs.closeSync(out);
+  bridgeProc.on('exit', () => { bridgeProc = null; });
+  return { ok: true, msg: 'bridge starting on port ' + BRIDGE_PORT };
+}
+function bridgeStopProc() {
+  if (!bridgeProc) return { ok: true, msg: 'bridge not managed by panel (external?)' };
+  try { process.kill(bridgeProc.pid, 'SIGTERM'); return { ok: true, msg: 'bridge stopped' }; }
+  catch (e) { return { ok: false, error: e.message }; }
+}
+
 /* ---------- mercury (hum-testing) control ---------- */
 function mercuryPid() {
   try {
-    const pid = parseInt(fs.readFileSync(HUM_LOCK, 'utf8').trim(), 10);
+    const raw = fs.readFileSync(HUM_LOCK, 'utf8').trim();
+    const pid = parseInt(raw, 10);
     // confirm it's actually mercury3, not a recycled pid
     if (pidAlive(pid)) {
       try {
         const cl = fs.readFileSync(`/proc/${pid}/cmdline`, 'utf8');
         if (cl.includes(HUM_SCRIPT)) return pid;
       } catch { if (process.platform !== 'linux') return pid; }
+    }
+  } catch {}
+  // lock empty/garbage: a rival mercury start truncates the file BEFORE it
+  // fails flock and exits, destroying the live pid — scan /proc instead
+  try {
+    for (const d of fs.readdirSync('/proc')) {
+      if (!/^\d+$/.test(d)) continue;
+      try {
+        if (fs.readFileSync(`/proc/${d}/cmdline`, 'utf8').includes(HUM_SCRIPT)) return parseInt(d, 10);
+      } catch {}
     }
   } catch {}
   return 0;
@@ -179,7 +217,12 @@ function mercuryStart() {
   });
   child.unref();
   fs.closeSync(out);
-  return { ok: true, pid: child.pid };
+  // 'error' (ENOENT etc.) fires async and is an uncaughtException without a
+  // listener — record it so the next status poll shows the truth
+  child._spawnError = null;
+  child.on('error', e => { child._spawnError = e.message; });
+  setTimeout(() => { if (child._spawnError) mercuryStart.lastError = child._spawnError; }, 300);
+  return { ok: !child._spawnError, pid: child.pid };
 }
 
 function mercuryStop() {
@@ -213,18 +256,22 @@ const followers = new Set();
 let lastLogSize = 0;
 function startLogFollow() {
   setInterval(() => {
-    let st;
-    try { st = fs.statSync(HUM_LOG); } catch { return; }
-    if (st.size === lastLogSize) return;
-    if (st.size < lastLogSize) lastLogSize = 0; // truncated
-    const fd = fs.openSync(HUM_LOG, 'r');
-    const len = st.size - lastLogSize;
-    const buf = Buffer.alloc(len);
-    fs.readSync(fd, buf, 0, len, lastLogSize);
-    fs.closeSync(fd);
-    lastLogSize = st.size;
-    const evt = `data: ${JSON.stringify(buf.toString('utf8'))}\n\n`;
-    for (const res of followers) { try { res.write(evt); } catch { followers.delete(res); } }
+    // an uncaught throw inside setInterval kills the whole panel: this tick
+    // touches the fs in a TOCTOU window (log rotation), so guard everything
+    try {
+      let st;
+      try { st = fs.statSync(HUM_LOG); } catch { return; }
+      if (st.size === lastLogSize) return;
+      if (st.size < lastLogSize) lastLogSize = 0; // truncated
+      const fd = fs.openSync(HUM_LOG, 'r');
+      const len = st.size - lastLogSize;
+      const buf = Buffer.alloc(len);
+      fs.readSync(fd, buf, 0, len, lastLogSize);
+      fs.closeSync(fd);
+      lastLogSize = st.size;
+      const evt = `data: ${JSON.stringify(buf.toString('utf8'))}\n\n`;
+      for (const res of followers) { try { res.write(evt); } catch { followers.delete(res); } }
+    } catch { /* vanished between stat and open — next tick re-syncs */ }
   }, 1000).unref?.();
 }
 try { lastLogSize = fs.statSync(HUM_LOG).size; } catch {}
@@ -232,10 +279,10 @@ try { lastLogSize = fs.statSync(HUM_LOG).size; } catch {}
 /* ---------- status snapshot ---------- */
 async function statusSnapshot() {
   const bridgeUp = await refreshBridge();
-  let bridge = { up: false };
+  let bridge = { up: false, managed: !!bridgeProc, script: fs.existsSync(BRIDGE_SCRIPT) };
   if (bridgeUp) {
     const h = await bridgeRaw('GET', '/bridge/health');
-    bridge = { up: true, port: bridgePort, ...(h.json || {}) };
+    bridge = { up: true, port: bridgePort, managed: !!bridgeProc, ...(h.json || {}) };
   }
   const humPid = mercuryPid();
   return {
@@ -264,6 +311,21 @@ function serveStatic(res, p) {
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://controlroom');
   const p = url.pathname;
+
+  // drive-by defense: state-changing calls must be same-origin. sec-fetch-site
+  // is set by every modern browser and is unforgeable in cross-site contexts;
+  // the Host check closes DNS-rebind (attacker domain resolving to 127.0.0.1).
+  const wantWrite = req.method !== 'GET' && req.method !== 'HEAD';
+  const sfs = req.headers['sec-fetch-site'];
+  const host = String(req.headers.host || '');
+  const badHost = !/^127\.0\.0\.1(:\d+)?$/i.test(host) && !/^localhost(:\d+)?$/i.test(host);
+  // non-browsers (curl/cli) omit sec-fetch-site entirely → allowed.
+  // any browser send that isn't from this exact origin → 403.
+  if (wantWrite && sfs && sfs !== 'same-origin') {
+    return json(res, 403, { ok: false, error: 'cross-site request blocked' });
+  }
+  if (badHost) return json(res, 403, { ok: false, error: 'invalid host' });
+
   try {
     /* --- api --- */
     if (p === '/api/status' && req.method === 'GET') return json(res, 200, await statusSnapshot());
@@ -296,7 +358,7 @@ const server = http.createServer(async (req, res) => {
       const text = String(body.text || '').slice(0, 4000);
       if (!text.trim()) return json(res, 400, { ok: false, error: 'empty' });
       fs.mkdirSync(HUM_OUTBOX, { recursive: true });
-      const name = `panel-${Date.now()}.txt`;
+      const name = `panel-${Date.now()}-${crypto.randomBytes(2).toString('hex')}.txt`;
       fs.writeFileSync(path.join(HUM_OUTBOX, name), text);
       return json(res, 200, { ok: true, name });
     }
@@ -328,7 +390,8 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, { ok: true, text: txt });
     }
     if (p === '/api/hum/memory' && req.method === 'POST') {
-      const body = JSON.parse(await readBody(req) || '{}');
+      const body = JSON.parse(await readBody(req) || 'null');
+      if (!isObj(body)) return json(res, 400, { ok: false, error: 'json object required' });
       fs.writeFileSync(HUM_MEMORY, String(body.text || '').slice(0, 40000));
       return json(res, 200, { ok: true });
     }
@@ -346,6 +409,12 @@ const server = http.createServer(async (req, res) => {
     }
 
     /* --- bridge proxy (nonce handled server-side) --- */
+    if (p === '/api/bridge/lifecycle' && req.method === 'POST') {
+      const body = JSON.parse(await readBody(req) || '{}');
+      const r = body.action === 'stop' ? bridgeStopProc() : bridgeStart();
+      return json(res, 200, { ...r });
+    }
+
     if (p === '/api/bridge/open' && req.method === 'GET') {
       await refreshBridge();
       return json(res, 200, { ok: !!bridgePort, url: `http://127.0.0.1:${bridgePort}/` });
@@ -375,10 +444,12 @@ const server = http.createServer(async (req, res) => {
         for await (const c of req) { len += c.length; if (len > 25 * 1024 * 1024) return json(res, 413, { ok: false, error: 'too large' }); chunks.push(c); }
         const up = http.request({ host: '127.0.0.1', port: bridgePort, path: sub + url.search, method: req.method,
           headers: { 'content-type': ct, 'content-length': len, 'x-client-nonce': nonce, 'x-bot-token': BOT_TOKEN } }, pres => {
+          if (res.headersSent) return pres.resume();
           res.writeHead(pres.statusCode, { 'content-type': pres.headers['content-type'] || 'application/json' });
+          pres.on('error', () => res.destroy()); // upstream died mid-body: kill the socket, no throw
           pres.pipe(res);
         });
-        up.on('error', e => json(res, 502, { ok: false, error: e.message }));
+        up.on('error', e => { if (!res.headersSent) json(res, 502, { ok: false, error: e.message }); else res.destroy(); });
         up.end(Buffer.concat(chunks));
         return;
       }
@@ -411,7 +482,9 @@ const server = http.createServer(async (req, res) => {
         const f = path.join(d, name);
         if (fs.existsSync(f)) {
           res.writeHead(200, { 'content-type': 'application/json', 'content-disposition': `attachment; filename=\"${name}\"` });
-          return fs.createReadStream(f).pipe(res);
+          const rs = fs.createReadStream(f);
+          rs.on('error', () => { try { res.end(); } catch {} }); // file vanished mid-download
+          return rs.pipe(res);
         }
       }
       return json(res, 404, { ok: false, error: 'not found' });

@@ -68,7 +68,7 @@ function renderStatus(st) {
   // bridge status strip above the workspace
   const ws = $('#wsStatus');
   if (ws) ws.innerHTML = st.bridge.up
-    ? `<span class="chip on"><i></i>bridge :${st.bridge.port} · ${st.bridge.sessions} session(s) · ${fmtUp(st.bridge.uptime_s)} up · ${st.bridge.memory_mb}MB</span>`
+    ? `<span class="chip on"><i></i><span class="chip-t">bridge :${st.bridge.port} · ${st.bridge.sessions} session(s) · ${fmtUp(st.bridge.uptime_s)} up · ${st.bridge.memory_mb}MB</span></span>`
     : '<span class="chip off"><i></i>bridge offline</span>';
 }
 function svcCard(name, role, on, stats) {

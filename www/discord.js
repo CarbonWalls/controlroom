@@ -6,6 +6,42 @@ const $$ = s => [...document.querySelectorAll(s)];
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const tt = (msg, err) => window.crToast ? window.crToast(msg, err) : alert(msg);
 const API = '/api/bridge';
+const DISCORD_MSG_MAX = 2000;
+
+/* ---- icon set (feather-style, bold stroke) ---- */
+const IC = {
+  hash: '<line x1="4" y1="9" x2="20" y2="9"/><line x1="4" y1="15" x2="20" y2="15"/><line x1="10" y1="3" x2="8" y2="21"/><line x1="16" y1="3" x2="14" y2="21"/>',
+  speaker: '<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9.5 9.5 0 0 1 0 13"/>',
+  megaphone: '<path d="M3 11v3a1 1 0 0 0 1 1h2l4 4V6L6 10H4a1 1 0 0 0-1 1z"/><path d="M14 8.5a4.5 4.5 0 0 1 0 7"/><path d="M17 5.5a8.5 8.5 0 0 1 0 13"/><line x1="6" y1="15" x2="7.5" y2="21"/>',
+  stage: '<circle cx="12" cy="12" r="2.5"/><path d="M7.8 7.8a6 6 0 0 0 0 8.4"/><path d="M16.2 16.2a6 6 0 0 0 0-8.4"/><path d="M4.9 4.9a10 10 0 0 0 0 14.2"/><path d="M19.1 19.1a10 10 0 0 0 0-14.2"/>',
+  chevron: '<polyline points="9 18 15 12 9 6"/>',
+  caret: '<polyline points="6 9 12 15 18 9"/>',
+  reply: '<polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/>',
+  trash: '<polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/>',
+  clip: '<path d="M21.4 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>',
+  send: '<line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>',
+  download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>',
+  x: '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>',
+  menu: '<line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>',
+  search: '<circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16" y2="16"/>',
+  plus: '<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>',
+  refresh: '<polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>',
+  play: '<polygon points="6 4 21 12 6 20 6 4"/>',
+  stop: '<rect x="5" y="5" width="14" height="14" rx="2"/>',
+  edit: '<path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/>',
+  shield: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>',
+  users: '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
+  clock: '<circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15.5 14"/>',
+  file: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>',
+  grid: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>',
+  chat: '<path d="M21 11.5a8.38 8.38 0 0 1-8.5 8.5 8.5 8.5 0 0 1-3.8-.9L3 21l1.9-5.7a8.5 8.5 0 0 1-.9-3.8 8.38 8.38 0 0 1 8.5-8.5 8.38 8.38 0 0 1 8.5 8.5z"/>',
+  alert: '<path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>',
+  user: '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
+  save: '<path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/>',
+  arrowup: '<line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/>',
+};
+const ic = (n, s = 15) => `<svg class="ic" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${IC[n] || ''}</svg>`;
+const chanIc = c => ({ 0: 'hash', 2: 'speaker', 4: 'grid', 5: 'megaphone', 13: 'stage', 15: 'speaker', 16: 'hash' }[c.type] || 'hash');
 
 async function bapi(path, opts = {}) {
   const r = await fetch(API + path, {
@@ -20,19 +56,11 @@ async function bapi(path, opts = {}) {
 
 /* ---- state ---- */
 const W = {
-  me: null,             // whoami bot user
-  guilds: [],           // guild list
-  guild: null,          // selected guild object
-  channels: [],
-  channel: null,
-  messages: [],
-  members: new Map(),   // uid -> member
-  roles: [],
-  view: 'chat',         // chat | members | roles | channels | scheduler | voice | backups
-  loading: false,
+  me: null, guilds: [], guild: null, channels: [], channel: null,
+  messages: [], members: new Map(), roles: [], view: 'chat', loadingOlder: false,
 };
 
-/* ---- permission bits (ported from bridge www/app.js — official table) ---- */
+/* ---- permission bits (official table) ---- */
 const PERM_BITS = [
   [1n,'create_invite','TVS'],[2n,'kick_members','G'],[4n,'ban_members','G'],[8n,'administrator','G'],
   [16n,'manage_channels','TVS'],[32n,'manage_guild','G'],[64n,'add_reactions','TVS'],[128n,'view_audit_log','G'],
@@ -54,13 +82,33 @@ const PERM_BITS = [
   [1n<<51n,'pin_messages','T'],[1n<<52n,'bypass_slowmode','TVS']
 ];
 const hasBit = (bits, bit) => (BigInt(bits || 0) & bit) === bit;
-const avatarUrl = (u) => u?.avatar ? `https://cdn.discordapp.com/avatars/${u.id}/${u.avatar}.png?size=64` : 'data:image/svg+xml;utf8,<svg xmlns=%27http://www.w3.org/2000/svg%27 width=%2764%27 height=%2764%27><rect width=%2764%27 height=%2764%27 fill=%27%23232c40%27/><text x=%2732%27 y=%2740%27 font-size=%2726%27 text-anchor=%27middle%27 fill=%27%237d8aa5%27>?</text></svg>';
+const AV_FALLBACK = 'data:image/svg+xml;utf8,' + encodeURIComponent(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='64' height='64'><rect width='64' height='64' rx='32' fill='%23232c40'/><circle cx='32' cy='25' r='10' fill='%2357647f'/><path d='M12 56c2-12 10-16 20-16s18 4 20 16' fill='%2357647f'/></svg>`);
+const avatarUrl = u => u?.avatar ? `https://cdn.discordapp.com/avatars/${u.id}/${u.avatar}.png?size=64` : AV_FALLBACK;
 
-/* ---- dom helpers (panel-consistent) ---- */
+/* ---- generic char counter: any textarea[data-max] gets a live counter ---- */
+function bindCounter(ta) {
+  const max = parseInt(ta.dataset.max, 10) || DISCORD_MSG_MAX;
+  const wrap = ta.closest('.cwrap');
+  const cnt = wrap?.querySelector('.ccount');
+  const paint = () => {
+    if (!cnt) return;
+    const n = ta.value.length;
+    cnt.textContent = `${n}/${max}`;
+    cnt.className = 'ccount' + (n > max ? ' over' : n > max * .9 ? ' warn' : '');
+    const sendBtn = wrap?.parentElement?.querySelector('[data-sendbtn]');
+    if (sendBtn) sendBtn.disabled = n === 0 || n > max;
+  };
+  ta.addEventListener('input', paint);
+  paint();
+  return paint;
+}
+
+/* ---- modal helpers ---- */
 function modal(title, bodyHTML, footHTML = '') {
   const bg = document.createElement('div');
   bg.className = 'cr-modal-bg';
-  bg.innerHTML = `<div class="cr-modal"><div class="cr-modal-head"><h3>${esc(title)}</h3><button class="ghost-btn cr-x">✕</button></div><div class="cr-modal-body">${bodyHTML}</div>${footHTML ? `<div class="cr-modal-foot">${footHTML}</div>` : ''}</div>`;
+  bg.innerHTML = `<div class="cr-modal"><div class="cr-modal-head"><h3>${esc(title)}</h3><button class="ibtn cr-x">${ic('x', 16)}</button></div><div class="cr-modal-body">${bodyHTML}</div>${footHTML ? `<div class="cr-modal-foot">${footHTML}</div>` : ''}</div>`;
   document.body.appendChild(bg);
   const close = () => bg.remove();
   bg.querySelector('.cr-x').onclick = close;
@@ -82,6 +130,8 @@ function promptInput(title, label, val = '') {
     setTimeout(() => m.el.querySelector('#_pi').focus(), 30);
   });
 }
+const searchBox = (id, ph) => `<div class="search-wrap">${ic('search', 14)}<input id="${id}" placeholder="${esc(ph)}"></div>`;
+const btn = (cls, label, icon) => `<button class="${cls}">${icon ? ic(icon, 13) : ''}${label ? `<span>${esc(label)}</span>` : ''}</button>`;
 
 /* ==== boot: whoami + guilds ==== */
 async function ensureMe() {
@@ -97,23 +147,22 @@ async function loadGuilds() {
   return W.guilds;
 }
 
-/* ==== rendering: shell of the workspace tab ==== */
+/* ==== workspace shell ==== */
+const SUBVIEWS = [
+  ['chat', 'chat'], ['members', 'members'], ['roles', 'roles'], ['channels', 'channels'],
+  ['scheduler', 'scheduler'], ['voice', 'voice'], ['backups', 'backups'],
+];
 function wsShell() {
   return `
-  <div class="ws-subtabs" id="wsSubtabs">
-    <button class="st active" data-v="chat">chat</button>
-    <button class="st" data-v="members">members</button>
-    <button class="st" data-v="roles">roles</button>
-    <button class="st" data-v="channels">channels</button>
-    <button class="st" data-v="scheduler">scheduler</button>
-    <button class="st" data-v="voice">voice</button>
-    <button class="st" data-v="backups">backups</button>
+  <div class="ws-topbar">
+    <div class="ws-subtabs" id="wsSubtabs">${SUBVIEWS.map(([v, l]) =>
+      `<button class="st ${v === W.view ? 'active' : ''}" data-v="${v}">${ic(v === 'chat' ? 'chat' : v === 'members' ? 'users' : v === 'roles' ? 'shield' : v === 'channels' ? 'grid' : v === 'scheduler' ? 'clock' : v === 'voice' ? 'speaker' : 'file', 13)}<span>${l}</span></button>`).join('')}</div>
   </div>
   <div class="ws">
     <aside class="ws-side" id="wsSide">
       <div class="ws-side-top">
         <select id="wsGuild" class="ws-guildsel"></select>
-        <button class="mic ws-toggle" id="wsChanToggle" title="toggle channels">☰</button>
+        <button class="ibtn ws-toggle" id="wsChanToggle" title="channels">${ic('menu', 16)}</button>
       </div>
       <div id="wsChans" class="ws-chans"></div>
     </aside>
@@ -125,8 +174,8 @@ function wsShell() {
 
 async function mountWorkspace(host) {
   const sv = new URLSearchParams(location.search).get('view'); // still-mode subview forcing
-  if (sv) { W.view = sv; host.innerHTML = wsShell(); $$('#wsSubtabs .st').forEach(x => x.classList.toggle('active', x.dataset.v === sv)); }
-  else host.innerHTML = wsShell();
+  if (sv) W.view = sv;
+  host.innerHTML = wsShell();
   $('#wsSubtabs').onclick = e => {
     const b = e.target.closest('.st'); if (!b) return;
     $$('#wsSubtabs .st').forEach(x => x.classList.toggle('active', x === b));
@@ -134,12 +183,21 @@ async function mountWorkspace(host) {
   };
   $('#wsGuild').onchange = e => selectGuild(e.target.value);
   const side = $('#wsSide');
-  if (innerWidth <= 800) side.classList.add('collapsed');
-  $('#wsChanToggle').onclick = () => side.classList.toggle('collapsed');
-  $('#wsChanToggle').title = 'toggle channels';
+  const scrim = document.createElement('div');
+  scrim.className = 'ws-scrim'; scrim.hidden = true;
+  host.appendChild(scrim);
+  const toggleSide = () => {
+    if (innerWidth <= 800) {
+      side.classList.toggle('open');
+      scrim.hidden = !side.classList.contains('open');
+    } else side.classList.toggle('collapsed');
+  };
+  $('#wsChanToggle').onclick = toggleSide;
+  scrim.onclick = toggleSide;
+  window.addEventListener('resize', () => { side.classList.remove('open'); scrim.hidden = true; });
   let guilds;
   try { guilds = await loadGuilds(); }
-  catch (err) { host.innerHTML = `<div class="panel"><div class="panel-body"><div class="empty">${esc(err.message)}</div></div></div>`; return; }
+  catch (err) { host.innerHTML = `<div class="panel"><div class="panel-body"><div class="empty">${ic('alert', 14)} ${esc(err.message)}</div></div></div>`; return; }
   $('#wsGuild').innerHTML = guilds.map(g => `<option value="${g.id}">${esc(g.name)}</option>`).join('');
   if (!W.guild) await selectGuild(guilds[0]?.id);
   else $('#wsGuild').value = W.guild.id;
@@ -157,20 +215,22 @@ async function loadChannels() {
   W.channels = await bapi(`/discord/guilds/${W.guild.id}/channels`);
   W.channels.sort((a, b) => (a.type - b.type) || a.position - b.position);
   if (!W.channel || !W.channels.find(c => c.id === W.channel.id)) W.channel = W.channels.find(c => c.type === 0 || c.type === 5) || null;
-  const el = $('#wsChans');
-  if (!el) return;
-  const cats = W.channels.filter(c => c.type === 4);
+  paintChans();
+}
+function paintChans() {
+  const el = $('#wsChans'); if (!el) return;
   const rows = [];
   for (const c of W.channels) {
     if (c.type === 4 || !c.parent_id) continue;
-    const icon = { 0: '#', 2: '♪', 4: '', 5: '‼', 13: '◎', 15: '▶' }[c.type] || '·';
-    rows.push(`<div class="chan ${W.channel?.id === c.id ? 'sel' : ''}" data-id="${c.id}"><span class="ci">${icon}</span><span class="cn">${esc(c.name)}</span></div>`);
+    rows.push(`<div class="chan ${W.channel?.id === c.id ? 'sel' : ''}" data-id="${c.id}"><span class="ci">${ic(chanIc(c), 14)}</span><span class="cn">${esc(c.name)}</span></div>`);
   }
   el.innerHTML = rows.join('') || '<div class="empty">no channels visible</div>';
   el.onclick = e => {
     const d = e.target.closest('.chan'); if (!d) return;
     W.channel = W.channels.find(c => c.id === d.dataset.id);
     $$('#wsChans .chan').forEach(x => x.classList.toggle('sel', x === d));
+    if (innerWidth <= 800) { $('#wsSide').classList.remove('open'); const sc = $('.ws-scrim'); if (sc) sc.hidden = true; }
+    else $('#wsSide').classList.add('collapsed');
     renderView();
   };
 }
@@ -180,82 +240,151 @@ async function renderView() {
   const v = $('#wsView'); if (!v) return;
   v.innerHTML = '<div class="empty">loading…</div>';
   try {
-    ({ chat: viewChat, members: viewMembers, roles: viewRoles, channels: viewChannels,
+    await ({ chat: viewChat, members: viewMembers, roles: viewRoles, channels: viewChannels,
        scheduler: viewScheduler, voice: viewVoice, backups: viewBackups }[W.view])(v);
-  } catch (e) { v.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+  } catch (e) { v.innerHTML = `<div class="empty">${ic('alert', 14)} ${esc(e.message)}</div>`; }
 }
 
-/* ---- chat ---- */
+/* ---- chat: optimistic send, counter, load-older ---- */
 async function viewChat(v) {
   if (!W.channel) return v.innerHTML = '<div class="empty">select a text channel</div>';
   v.innerHTML = `<div class="chat">
-    <div class="chat-head"><b>#${esc(W.channel.name)}</b>
-      <span class="count">id ${esc(W.channel.id)}</span>
-      <button class="ghost-btn" id="chReload">reload</button>
-      <button class="ghost-btn" id="chPurge" title="bulk-delete bot messages">purge-bot</button>
+    <div class="chat-head">
+      <button class="ibtn ch-chanbtn" id="chDrawerBtn" title="channels">${ic('grid', 15)}</button>
+      <span class="cicon">${ic(chanIc(W.channel), 16)}</span><b>${esc(W.channel.name)}</b>
+      <span class="count hidemobile" id="chIdChip" title="click to copy">${esc(W.channel.id)}</span>
+      <span class="spacer"></span>
+      <button class="ibtn" id="chReload" title="reload">${ic('refresh', 15)}</button>
+      <button class="ibtn" id="chPurge" title="purge bot messages">${ic('trash', 15)}</button>
     </div>
     <div class="msgs" id="msgs"><div class="empty">loading…</div></div>
+    <div class="reply-chip" id="replyChip" hidden></div>
     <div class="composer">
-      <textarea id="cmsg" rows="2" placeholder="message to #${esc(W.channel.name)}…"></textarea>
-      <label class="ghost-btn file-btn">📎<input type="file" id="cfile" hidden></label>
-      <button class="btn primary" id="csend">send</button>
+      <div class="cwrap">
+        <textarea id="cmsg" rows="2" data-max="${DISCORD_MSG_MAX}" placeholder="message to #${esc(W.channel.name)}…"></textarea>
+        <span class="ccount"></span>
+      </div>
+      <label class="ibtn file-btn" title="attach file">${ic('clip', 15)}<input type="file" id="cfile" hidden></label>
+      <button class="ibtn primary-send" id="csend" data-sendbtn title="send">${ic('send', 15)}</button>
     </div>
   </div>`;
+  const longTxt = t => (t && t.length > 400) ? 'data-clamp="1"' : '';
+  const ta = $('#cmsg');
+  const paintCount = bindCounter(ta);
   const doLoad = async () => {
     const msgs = await bapi(`/discord/channels/${W.channel.id}/messages?limit=100`);
     W.messages = Array.isArray(msgs) ? msgs.reverse() : [];
     paintMsgs();
   };
   $('#chReload').onclick = doLoad;
+  $('#chIdChip').onclick = () => { navigator.clipboard?.writeText(W.channel.id); tt('id copied'); };
+  $('#chDrawerBtn').onclick = () => $('#wsChanToggle').click();
   $('#chPurge').onclick = () => confirmModal('purge bot messages', `delete every message authored by ${W.me.username} in #${W.channel.name}?`, bulkDeleteBot);
   await doLoad();
   $('#csend').onclick = sendCurrent;
-  $('#cmsg').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendCurrent(); } });
+  ta.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendCurrent(); } });
   $('#cfile').onchange = async e => {
     const f = e.target.files[0]; if (!f) return;
-    const buf = new Uint8Array(await f.arrayBuffer());
-    let bin = '';
-    for (let i = 0; i < buf.length; i += 8192) bin += String.fromCharCode(...buf.subarray(i, i + 8192)); // chunked: spread caps at ~65k args
-    const b64 = btoa(bin);
+    if (f.size > 8 * 1024 * 1024) { tt('file too large (>8MB)', true); e.target.value = ''; return; }
+    const tmp = { id: 'tmpf' + Date.now(), content: ta.value || '', author: { id: W.me.id, username: W.me.username, avatar: W.me.avatar }, timestamp: new Date().toISOString(), attachments: [{ filename: f.name }], _pending: true };
+    if (ta.value) { ta.value = ''; paintCount(); }
+    W.messages.push(tmp); paintMsgs();
     try {
-      await bapi(`/discord/channels/${W.channel.id}/messages`, { method: 'POST', body: {
-        content: $('#cmsg').value || undefined,
-        attachments: [{ id: '0', filename: f.name, description: null, content_bytes: b64 }] } });
-      $('#cmsg').value = ''; tt('uploaded'); doLoad();
-    } catch (err) { tt(err.message, true); }
+      const buf = new Uint8Array(await f.arrayBuffer());
+      let bin = '';
+      for (let i = 0; i < buf.length; i += 8192) bin += String.fromCharCode(...buf.subarray(i, i + 8192));
+      const sent = await bapi(`/discord/channels/${W.channel.id}/messages`, { method: 'POST', body: {
+        content: tmp.content || undefined, attachments: [{ id: '0', filename: f.name, description: null, content_bytes: btoa(bin) }] } });
+      const idx = W.messages.findIndex(m => m.id === tmp.id); if (idx >= 0) W.messages[idx] = sent;
+    } catch (err) { tmp._failed = true; tmp._error = err.message; tt(err.message, true); }
+    paintMsgs();
     e.target.value = '';
   };
+
+  function renderReplyChip() {
+    const chip = $('#replyChip');
+    if (ta.dataset.reply) {
+      const orig = W.messages.find(m => m.id === ta.dataset.reply);
+      chip.hidden = false;
+      chip.innerHTML = `${ic('reply', 13)} replying to <b>${esc(orig?.author?.username || ta.dataset.reply)}</b>${orig ? `: ${esc((orig.content || '').slice(0, 60))}` : ''}<button class="ibtn" id="replyX">${ic('x', 13)}</button>`;
+      $('#replyX').onclick = () => { delete ta.dataset.reply; renderReplyChip(); ta.focus(); };
+    } else chip.hidden = true;
+  }
+
   function paintMsgs() {
     const el = $('#msgs');
-    el.innerHTML = W.messages.map(m => {
+    let prev = null;
+    el.innerHTML = `<div class="load-older" id="loadOlder">${ic('arrowup', 13)} load older</div>` + W.messages.map(m0 => {
+      const m = m0;
+      const grouped = prev && prev.author?.id === m.author?.id && !m._pending && !m._failed &&
+        (new Date(m.timestamp) - new Date(prev.timestamp)) < 4 * 60000 && prev.id && m.id;
+      prev = m;
       const bot = m.author?.id === W.me.id;
-      const atts = (m.attachments || []).map(a => a.image ? `<a href="${esc(a.url)}" target="_blank"><img class="att-img" src="${esc(a.url)}?width=320" loading="lazy"></a>` : `<span class="att-chip">${esc(a.filename)}</span>`).join(' ');
-      return `<div class="msg ${bot ? 'own' : ''}" data-id="${m.id}">
-        <img class="m-av" src="${esc(avatarUrl(m.author))}" loading="lazy">
+      const atts = (m.attachments || []).map(a => a.image ? `<a href="${esc(a.url)}" target="_blank"><img class="att-img" src="${esc(a.url)}?width=320" loading="lazy"></a>` : `<span class="att-chip">${ic('file', 12)} ${esc(a.filename || 'file')}</span>`).join(' ');
+      const acts = `${m._failed ? `<button class="mic" data-a="retry">${ic('refresh', 12)} retry</button>` : ''}<button class="mic" data-a="reply" title="reply">${ic('reply', 13)}</button>${bot && !m._pending && !m._failed ? `<button class="mic" data-a="del" title="delete">${ic('trash', 13)}</button>` : ''}`;
+      return `<div class="msg ${bot ? 'own' : ''} ${m._pending ? 'pending' : ''} ${m._failed ? 'failed' : ''} ${grouped ? 'grouped' : ''}" data-id="${m.id}">
+        ${grouped ? '<span class="m-av ghost"></span>' : `<img class="m-av" src="${esc(avatarUrl(m.author))}" loading="lazy">`}
         <div class="m-body">
-          <div class="m-top"><b>${esc(m.author?.username || '?')}</b><span class="m-t">${new Date(m.timestamp).toLocaleTimeString()}</span>
-            <span class="m-acts"><button class="mic" data-a="reply">↩</button>${bot ? '<button class="mic" data-a="del">🗑</button>' : ''}</span></div>
-          <div class="m-txt">${esc(m.content || '')} ${atts}</div>
+          <div class="m-top" ${grouped ? 'hidden' : ''}><b>${esc(m.author?.username || '?')}</b><span class="m-t">${m._pending ? 'sending…' : m._failed ? 'failed — ' + esc(m._error || '') : new Date(m.timestamp).toLocaleTimeString()}</span>
+            <span class="m-acts">${acts}</span></div>
+          <div class="m-txt" ${longTxt(m.content)}>${esc(m.content || '')} ${atts}</div>
         </div></div>`;
-    }).join('') || '<div class="empty">no messages</div>';
+    }).join('');
+    $('#loadOlder').onclick = loadOlder;
+    el.querySelectorAll('.m-txt[data-clamp]').forEach(el2 => {
+      el2.onclick = ev => { ev.stopPropagation(); el2.removeAttribute('data-clamp'); };
+    });
     el.onclick = async e => {
       const b = e.target.closest('.mic'); if (!b) return;
-      const mid = b.closest('.msg').dataset.id;
-      if (b.dataset.a === 'del') confirmModal('delete message', 'delete this message?', async () => { await bapi(`/discord/channels/${W.channel.id}/messages/${mid}`, { method: 'DELETE' }); tt('deleted'); doLoad(); });
-      if (b.dataset.a === 'reply') { $('#cmsg').dataset.reply = mid; $('#cmsg').placeholder = 'replying to ' + mid + '…'; $('#cmsg').focus(); }
+      const msgEl = b.closest('.msg'); const mid = msgEl.dataset.id;
+      if (b.dataset.a === 'del') confirmModal('delete message', 'delete this message?', async () => { await bapi(`/discord/channels/${W.channel.id}/messages/${mid}`, { method: 'DELETE' }); W.messages = W.messages.filter(m => m.id !== mid); paintMsgs(); tt('deleted'); });
+      if (b.dataset.a === 'reply') { ta.dataset.reply = mid; renderReplyChip(); ta.focus(); }
+      if (b.dataset.a === 'retry') {
+        const tmp = W.messages.find(m => m.id === mid); if (!tmp) return;
+        tmp._pending = true; tmp._failed = false; paintMsgs();
+        try {
+          const sent = await bapi(`/discord/channels/${W.channel.id}/messages`, { method: 'POST', body: { content: tmp.content } });
+          const idx = W.messages.findIndex(m => m.id === mid); if (idx >= 0) W.messages[idx] = sent;
+        } catch (err) { tmp._failed = true; tmp._error = err.message; }
+        paintMsgs();
+      }
     };
     el.scrollTop = el.scrollHeight;
   }
+
+  async function loadOlder() {
+    const oldest = W.messages.find(m => !String(m.id).startsWith('tmp'));
+    if (!oldest || W.loadingOlder) return;
+    W.loadingOlder = true;
+    $('#loadOlder').textContent = 'loading…';
+    try {
+      const older = await bapi(`/discord/channels/${W.channel.id}/messages?limit=100&before=${oldest.id}`);
+      const atTop = $('#msgs').scrollTop;
+      W.messages = (Array.isArray(older) ? older.reverse() : []).concat(W.messages);
+      paintMsgs();
+      $('#msgs').scrollTop = $('#msgs').scrollHeight - atTop; // keep position
+    } finally { W.loadingOlder = false; }
+  }
+
   async function sendCurrent() {
-    const content = $('#cmsg').value.trim(); if (!content) return;
+    const content = ta.value.trim();
+    if (!content || content.length > DISCORD_MSG_MAX) return;
     const body = { content };
-    if ($('#cmsg').dataset.reply) body.message_reference = { message_id: $('#cmsg').dataset.reply };
-    await bapi(`/discord/channels/${W.channel.id}/messages`, { method: 'POST', body });
-    $('#cmsg').value = ''; delete $('#cmsg').dataset.reply; $('#cmsg').placeholder = `message to #${W.channel.name}…`;
-    doLoad();
+    if (ta.dataset.reply) body.message_reference = { message_id: ta.dataset.reply };
+    // optimistic: clear input, paint a pending bubble, then settle
+    ta.value = ''; paintCount(); delete ta.dataset.reply; renderReplyChip();
+    const tmp = { id: 'tmp' + Date.now(), content, author: { id: W.me.id, username: W.me.username, avatar: W.me.avatar }, timestamp: new Date().toISOString(), attachments: [], _pending: true };
+    W.messages.push(tmp); paintMsgs();
+    try {
+      const sent = await bapi(`/discord/channels/${W.channel.id}/messages`, { method: 'POST', body });
+      const idx = W.messages.findIndex(m => m.id === tmp.id); if (idx >= 0) W.messages[idx] = sent;
+    } catch (err) {
+      tmp._failed = true; tmp._error = err.message; tt(err.message, true);
+    }
+    paintMsgs();
   }
   async function bulkDeleteBot() {
-    const ids = W.messages.filter(m => m.author?.id === W.me.id).map(m => m.id);
+    const ids = W.messages.filter(m => m.author?.id === W.me.id && !String(m.id).startsWith('tmp')).map(m => m.id);
     if (!ids.length) return tt('no bot messages to purge');
     for (let i = 0; i < ids.length; i += 100) {
       await bapi(`/discord/channels/${W.channel.id}/messages/bulk-delete`, { method: 'POST', body: { messages: ids.slice(i, i + 100) } });
@@ -267,7 +396,7 @@ async function viewChat(v) {
 
 /* ---- members ---- */
 async function viewMembers(v) {
-  v.innerHTML = `<div class="toolbar"><input id="memFilter" placeholder="filter by name…"><span class="count" id="memCount"></span></div><div id="memList" class="mem-list"><div class="empty">loading…</div></div>`;
+  v.innerHTML = `<div class="toolbar">${searchBox('memFilter', 'search members…')}<span class="count" id="memCount"></span></div><div id="memList" class="mem-list"><div class="empty">loading…</div></div>`;
   const render = () => {
     const f = $('#memFilter').value.toLowerCase();
     const arr = [...W.members.values()].filter(mb => !f || mb.user?.username?.toLowerCase().includes(f) || (mb.nick || '').toLowerCase().includes(f));
@@ -276,7 +405,7 @@ async function viewMembers(v) {
       const roles = (mb.roles || []).map(r => W.roles.find(x => x.id === r)?.name).filter(Boolean);
       return `<div class="list-item" data-uid="${mb.user.id}">
         <span class="t"><img class="m-av sm" src="${esc(avatarUrl(mb.user))}" loading="lazy"> <b>${esc(mb.nick || mb.user.username)}</b> <span class="count">${esc(roles.slice(0, 3).join(', ') || 'no roles')}</span></span>
-        <span class="meta"><button class="mic" data-a="edit">edit</button></span></div>`;
+        <span class="meta"><button class="ibtn" data-a="edit" title="edit member">${ic('edit', 14)}</button></span></div>`;
     }).join('') || '<div class="empty">no matches</div>';
   };
   $('#memFilter').oninput = render;
@@ -285,7 +414,7 @@ async function viewMembers(v) {
     openMemberEditor(b.closest('.list-item').dataset.uid);
   };
   if (!W.members.size) {
-    W.roles = await bapi(`/discord/guilds/${W.guild.id}/roles`);
+    W.roles = W.roles.length ? W.roles : await bapi(`/discord/guilds/${W.guild.id}/roles`);
     const r = await bapi(`/gateway/${W.me.id}/members/${W.guild.id}`, { method: 'POST', body: {} });
     (r.members || []).forEach(mb => W.members.set(mb.user.id, mb));
   }
@@ -302,7 +431,7 @@ async function viewMembers(v) {
         W.roles.filter(r => r.id !== W.guild.id && r.name !== '@everyone').map(r =>
           `<label class="rc"><input type="checkbox" data-r="${r.id}" ${mb.roles.includes(r.id) ? 'checked' : ''}> <span style="color:${r.color ? '#' + r.color.toString(16).padStart(6, '0') : 'var(--fg2)'}">${esc(r.name)}</span></label>`).join('')
       }</div></div>`,
-      `<button class="btn primary" data-save>save</button>
+      `<button class="btn primary" data-save>${ic('save', 13)}<span>save</span></button>
        <button class="btn" data-nick-only>nick only</button>
        <button class="btn danger" data-kick>kick</button>
        <button class="btn danger" data-ban>ban</button>`);
@@ -330,10 +459,10 @@ async function viewRoles(v) {
   const roles = await bapi(`/discord/guilds/${W.guild.id}/roles`);
   W.roles = roles;
   roles.sort((a, b) => b.position - a.position);
-  v.innerHTML = `<div class="toolbar"><button class="btn" id="roleNew">+ new role</button></div><div class="mem-list">${
+  v.innerHTML = `<div class="toolbar"><button class="btn primary" id="roleNew">${ic('plus', 13)}<span>new role</span></button></div><div class="mem-list">${
     roles.map(r => `<div class="list-item" data-rid="${r.id}">
-      <span class="t"><i class="dot" style="background:${r.color ? '#' + r.color.toString(16).padStart(6, '0') : 'var(--fg3)'}"></i> <b style="color:${r.color ? '#' + r.color.toString(16).padStart(6, '0') : 'inherit'}">${esc(r.name)}</b> <span class="count">${hasBit(r.permissions, 8n) ? '⚠ admin · ' : ''}${r.hoist ? 'separate · ' : ''}pos ${r.position}${r.managed ? ' · managed' : ''}</span></span>
-      <span class="meta">${r.id === W.guild.id ? '' : '<button class="mic" data-a="perms">perms</button><button class="mic" data-a="edit">edit</button>'}</span></div>`).join('')
+      <span class="t"><i class="dot" style="background:${r.color ? '#' + r.color.toString(16).padStart(6, '0') : 'var(--fg3)'}"></i> <b style="color:${r.color ? '#' + r.color.toString(16).padStart(6, '0') : 'inherit'}">${esc(r.name)}</b> <span class="count">${hasBit(r.permissions, 8n) ? 'admin · ' : ''}${r.hoist ? 'separate · ' : ''}pos ${r.position}${r.managed ? ' · managed' : ''}</span></span>
+      <span class="meta">${r.id === W.guild.id ? '' : `<button class="ibtn" data-a="perms" title="permissions">${ic('shield', 14)}</button><button class="ibtn" data-a="edit" title="edit">${ic('edit', 14)}</button>`}</span></div>`).join('')
   }</div>`;
   $('#roleNew').onclick = async () => {
     const name = await promptInput('new role', 'name'); if (!name) return;
@@ -341,7 +470,7 @@ async function viewRoles(v) {
     tt('role created'); renderView();
   };
   v.onclick = e => {
-    const b = e.target.closest('.mic'); if (!b) return;
+    const b = e.target.closest('.ibtn'); if (!b) return;
     const rid = b.closest('[data-rid]').dataset.rid;
     const role = roles.find(r => r.id === rid);
     if (b.dataset.a === 'perms') openRolePerms(role, v);
@@ -352,7 +481,7 @@ function openRoleEdit(role, v) {
   const m = modal('role · ' + role.name, `<div class="field"><label>name</label><input id="_rn" value="${esc(role.name)}"></div>
     <div class="field"><label>color (hex)</label><input id="_rc" value="${role.color ? '#' + role.color.toString(16).padStart(6, '0') : ''}" placeholder="#rrggbb"></div>
     <label class="rc"><input type="checkbox" id="_rh" ${role.hoist ? 'checked' : ''}> show separately in member list</label>`,
-    `<button class="btn primary" data-ok>save</button><button class="btn danger" data-del>delete</button>`);
+    `<button class="btn primary" data-ok>${ic('save', 13)}<span>save</span></button><button class="btn danger" data-del>delete</button>`);
   m.el.querySelector('[data-ok]').onclick = async () => {
     const hex = m.el.querySelector('#_rc').value.trim();
     const color = hex ? parseInt(hex.replace('#', ''), 16) : 0;
@@ -364,27 +493,13 @@ function openRoleEdit(role, v) {
     await bapi(`/discord/guilds/${W.guild.id}/roles/${role.id}`, { method: 'DELETE' }); tt('deleted'); m.close(); renderView();
   });
 }
-function openRolePerms(role, v) {
-  const state = { allow: BigInt(role.permissions || 0), deny: 0n };
-  const m = modal('permissions · ' + role.name, `
-    <input id="permFilter" placeholder="filter perms…" style="margin-bottom:8px">
-    <div id="permGrid" class="perm-grid"></div>`,
-    `<button class="btn primary" data-ok>apply</button>`);
-  const grid = m.el.querySelector('#permGrid');
-  const paint = () => {
-    const f = m.el.querySelector('#permFilter').value.toLowerCase();
-    const groups = { general: [], text: [], voice: [] };
-    for (const [bit, key, scope] of PERM_BITS) {
-      if (f && !key.includes(f)) continue;
-      const cat = scope === 'G' ? 'general' : scope.includes('T') ? 'text' : 'voice';
-      groups[cat].push([bit, key]);
-    }
-    grid.innerHTML = Object.entries(groups).map(([g, bits]) => `
-      <div class="pg-cat">${g}</div>${bits.map(([bit, key]) => {
-        const st = hasBit(state.allow, bit) ? 'allow' : hasBit(state.deny, bit) ? 'deny' : 'none';
-        return `<div class="pg-row"><span>${key}</span><button class="pg-state ${st}" data-bit="${bit}">${st}</button></div>`;
-      }).join('')}`).join('');
-  };
+function permTristateHTML(state, bits) {
+  return bits.map(([bit, key]) => {
+    const st = hasBit(state.allow, bit) ? 'allow' : hasBit(state.deny, bit) ? 'deny' : 'none';
+    return `<div class="pg-row"><span>${key}</span><button class="pg-state ${st}" data-bit="${bit}">${st}</button></div>`;
+  }).join('');
+}
+function wireTristate(grid, state, paint) {
   grid.onclick = e => {
     const b = e.target.closest('.pg-state'); if (!b) return;
     const bit = BigInt(b.dataset.bit);
@@ -395,6 +510,23 @@ function openRolePerms(role, v) {
     else { state.allow &= ~bit; state.deny &= ~bit; }
     paint();
   };
+}
+function openRolePerms(role, v) {
+  const state = { allow: BigInt(role.permissions || 0), deny: 0n };
+  const m = modal('permissions · ' + role.name, `${searchBox('permFilter', 'filter perms…')}<div id="permGrid" class="perm-grid"></div>`,
+    `<button class="btn primary" data-ok>${ic('save', 13)}<span>apply</span></button>`);
+  const grid = m.el.querySelector('#permGrid');
+  const paint = () => {
+    const f = m.el.querySelector('#permFilter').value.toLowerCase();
+    const groups = { general: [], text: [], voice: [] };
+    for (const [bit, key, scope] of PERM_BITS) {
+      if (f && !key.includes(f)) continue;
+      const cat = scope === 'G' ? 'general' : scope.includes('T') ? 'text' : 'voice';
+      groups[cat].push([bit, key]);
+    }
+    grid.innerHTML = Object.entries(groups).map(([g, bits]) => `<div class="pg-cat">${g}</div>${permTristateHTML(state, bits)}`).join('');
+  };
+  wireTristate(grid, state, paint);
   m.el.querySelector('#permFilter').oninput = paint;
   m.el.querySelector('[data-ok]').onclick = async () => {
     await bapi(`/discord/guilds/${W.guild.id}/roles/${role.id}`, { method: 'PATCH', body: { permissions: state.allow.toString() } });
@@ -403,69 +535,56 @@ function openRolePerms(role, v) {
   paint();
 }
 
-/* ---- channels view (create/edit/perms/delete) ---- */
+/* ---- channels view ---- */
 async function viewChannels(v) {
   const chans = await bapi(`/discord/guilds/${W.guild.id}/channels`);
   chans.sort((a, b) => (a.type - b.type) || a.position - b.position);
-  v.innerHTML = `<div class="toolbar"><button class="btn" id="chNew">+ text channel</button><button class="btn" id="chNewV">+ voice channel</button></div>
+  v.innerHTML = `<div class="toolbar"><button class="btn primary" id="chNew">${ic('plus', 13)}<span>text</span></button><button class="btn" id="chNewV">${ic('plus', 13)}<span>voice</span></button></div>
   <div class="mem-list">${chans.map(c => `<div class="list-item">
-    <span class="t">${{0:'#',2:'♪',4:'▦',5:'‼',13:'◎'}[c.type] || '·'} <b>${esc(c.name)}</b> <span class="count">${c.type === 4 ? 'category' : 'type ' + c.type} ${c.parent_id ? '· in ' + esc(chans.find(x => x.id === c.parent_id)?.name || '') : ''} ${c.nsfw ? '· nsfw' : ''}</span></span>
-    <span class="meta">${c.type === 4 ? '' : `<button class="mic" data-a="edit" data-id="${c.id}">edit</button><button class="mic" data-a="perms" data-id="${c.id}">perms</button><button class="mic" data-a="del" data-id="${c.id}">✕</button>`}</span></div>`).join('')}</div>`;
+    <span class="t">${ic(chanIc(c), 14)} <b>${esc(c.name)}</b> <span class="count">${c.parent_id ? 'in ' + esc(chans.find(x => x.id === c.parent_id)?.name || '?') : 'no category'}${c.nsfw ? ' · nsfw' : ''}</span></span>
+    <span class="meta">${c.type === 4 ? '' : `<button class="ibtn" data-a="edit" data-id="${c.id}" title="edit">${ic('edit', 14)}</button><button class="ibtn" data-a="perms" data-id="${c.id}" title="permissions">${ic('shield', 14)}</button><button class="ibtn danger" data-a="del" data-id="${c.id}" title="delete">${ic('trash', 14)}</button>`}</span></div>`).join('')}</div>`;
   $('#chNew').onclick = async () => { const n = await promptInput('new text channel', 'name'); if (n) { await bapi(`/discord/guilds/${W.guild.id}/channels`, { method: 'POST', body: { name: n, type: 0 } }); tt('created'); loadChannels().then(renderView); } };
   $('#chNewV').onclick = async () => { const n = await promptInput('new voice channel', 'name'); if (n) { await bapi(`/discord/guilds/${W.guild.id}/channels`, { method: 'POST', body: { name: n, type: 2 } }); tt('created'); loadChannels().then(renderView); } };
   v.onclick = e => {
-    const b = e.target.closest('.mic'); if (!b) return;
+    const b = e.target.closest('.ibtn'); if (!b) return;
     const c = chans.find(x => x.id === b.dataset.id);
     if (b.dataset.a === 'edit') {
-      const m = modal('channel · #' + c.name, `<div class="field"><label>name</label><input id="_cn" value="${esc(c.name)}"></div><div class="field"><label>topic</label><input id="_ct" value="${esc(c.topic || '')}"></div><label class="rc"><input type="checkbox" id="_cnf" ${c.nsfw ? 'checked' : ''}> nsfw</label>`, `<button class="btn primary" data-ok>save</button>`);
+      const m = modal('channel · ' + c.name, `<div class="field"><label>name</label><input id="_cn" value="${esc(c.name)}"></div><div class="field"><label>topic</label><input id="_ct" value="${esc(c.topic || '')}"></div><label class="rc"><input type="checkbox" id="_cnf" ${c.nsfw ? 'checked' : ''}> nsfw</label>`, `<button class="btn primary" data-ok>${ic('save', 13)}<span>save</span></button>`);
       m.el.querySelector('[data-ok]').onclick = async () => {
         await bapi(`/discord/channels/${c.id}`, { method: 'PATCH', body: { name: m.el.querySelector('#_cn').value, topic: m.el.querySelector('#_ct').value || null, nsfw: m.el.querySelector('#_cnf').checked } });
         tt('saved'); m.close(); loadChannels().then(renderView);
       };
     }
-    if (b.dataset.a === 'perms') openChanPerms(c, chans);
-    if (b.dataset.a === 'del') confirmModal('delete channel', `delete #${c.name}?`, async () => { await bapi(`/discord/channels/${c.id}`, { method: 'DELETE' }); tt('deleted'); loadChannels().then(renderView); });
+    if (b.dataset.a === 'perms') openChanPerms(c);
+    if (b.dataset.a === 'del') confirmModal('delete channel', `delete ${c.name}?`, async () => { await bapi(`/discord/channels/${c.id}`, { method: 'DELETE' }); tt('deleted'); loadChannels().then(renderView); });
   };
-  async function openChanPerms(c, allChans) {
+  async function openChanPerms(c) {
     const fresh = await bapi(`/discord/channels/${c.id}`);
     const ow = Array.isArray(fresh.permission_overwrites) ? fresh.permission_overwrites.map(x => ({ ...x, allow: BigInt(x.allow), deny: BigInt(x.deny) })) : [];
-    const m = modal('channel perms · #' + c.name, `
-      <div class="field"><label>overwrite for</label><select id="_owtarget">${W.roles.slice().sort((a, b) => b.position - a.position).map(r => `<option value="${r.id}" data-t="role">${esc(r.name)}</option>`).join('')}</select></div>
-      <input id="permFilter2" placeholder="filter perms…" style="margin:8px 0"><div id="permGrid2" class="perm-grid"></div>
-      <button class="btn" id="_owadd">apply to selected</button>
-      <div id="_owlist" class="ow-list"></div>`, `<button class="btn primary" data-ok>save all</button>`);
+    const m = modal(`perms · ${c.name}`, `
+      <div class="field"><label>overwrite for</label><select id="_owtarget">${(W.roles.length ? W.roles : await bapi(`/discord/guilds/${W.guild.id}/roles`)).slice().sort((a, b) => b.position - a.position).map(r => `<option value="${r.id}">${esc(r.name)}</option>`).join('')}</select></div>
+      ${searchBox('permFilter2', 'filter perms…')}<div id="permGrid2" class="perm-grid"></div>
+      <button class="btn" id="_owadd>${ic('plus', 13)}<span>queue overwrite</span></button>
+      <div id="_owlist" class="ow-list"></div>`, `<button class="btn primary" data-ok>${ic('save', 13)}<span>save all</span></button>`);
     const grid = m.el.querySelector('#permGrid2');
     let state = { allow: 0n, deny: 0n };
     const paint = () => {
       const f = m.el.querySelector('#permFilter2').value.toLowerCase();
       const scope = { 0: 'T', 5: 'T', 15: 'T', 16: 'T', 2: 'V', 13: 'S' }[c.type] || 'TVS';
-      const rows = PERM_BITS.filter(([bit, key, sc]) => sc.includes(scope) || sc.length > 3)
-        .filter(([bit, key]) => !f || key.includes(f));
-      grid.innerHTML = rows.map(([bit, key]) => {
-        const st = hasBit(state.allow, bit) ? 'allow' : hasBit(state.deny, bit) ? 'deny' : 'none';
-        return `<div class="pg-row"><span>${key}</span><button class="pg-state ${st}" data-bit="${bit}">${st}</button></div>`;
-      }).join('');
+      const rows = PERM_BITS.filter(([, , sc]) => sc.includes(scope) || sc.length > 3)
+        .filter(([, key]) => !f || key.includes(f));
+      grid.innerHTML = permTristateHTML(state, rows);
     };
-    grid.onclick = e => {
-      const b = e.target.closest('.pg-state'); if (!b) return;
-      const bit = BigInt(b.dataset.bit);
-      const cur = hasBit(state.allow, bit) ? 'allow' : hasBit(state.deny, bit) ? 'deny' : 'none';
-      const next = cur === 'none' ? 'allow' : cur === 'allow' ? 'deny' : 'none';
-      if (next === 'allow') { state.allow |= bit; state.deny &= ~bit; }
-      else if (next === 'deny') { state.deny |= bit; state.allow &= ~bit; }
-      else { state.allow &= ~bit; state.deny &= ~bit; }
-      paint();
-    };
+    wireTristate(grid, state, paint);
     const paintList = () => m.el.querySelector('#_owlist').innerHTML = ow.map((o, i) =>
-      `<div class="list-item"><span class="t">${esc(W.roles.find(r => r.id === o.id)?.name || o.id)}</span><span class="meta"><button class="mic" data-rm="${i}">remove</button></span></div>`).join('');
+      `<div class="list-item"><span class="t">${esc((W.roles.find(r => r.id === o.id) || {}).name || o.id)}</span><span class="meta"><button class="ibtn danger" data-rm="${i}">${ic('trash', 13)}</button></span></div>`).join('');
     m.el.querySelector('#permFilter2').oninput = paint;
     m.el.querySelector('#_owadd').onclick = () => {
-      const sel = m.el.querySelector('#_owtarget');
-      const id = sel.value;
+      const id = m.el.querySelector('#_owtarget').value;
       const ex = ow.find(o => o.id === id);
       if (ex) { ex.allow = state.allow; ex.deny = state.deny; }
       else ow.push({ id, type: 0, allow: state.allow, deny: state.deny });
-      state = { allow: 0n, deny: 0n }; paint(); paintList(); tt('queued overwrite');
+      state = { allow: 0n, deny: 0n }; paint(); paintList(); tt('overwrite queued');
     };
     m.el.querySelector('#_owlist').onclick = e => {
       const b = e.target.closest('[data-rm]'); if (!b) return;
@@ -483,32 +602,36 @@ async function viewChannels(v) {
 async function viewScheduler(v) {
   const r = await bapi('/gateway/scheduler/jobs');
   const jobs = r.jobs || [];
-  v.innerHTML = `<div class="toolbar"><button class="btn" id="jobNew">+ new job</button></div>
+  v.innerHTML = `<div class="toolbar"><button class="btn primary" id="jobNew">${ic('plus', 13)}<span>new job</span></button></div>
   <div class="mem-list">${jobs.map(j => `<div class="list-item">
-    <span class="t"><b>${esc(j.name)}</b> <span class="count">${esc(j.type)} · every ${everyLabel(j.intervalMs)} · runs ${j.runCount} · ${j.lastStatus || '—'} ${j.payload?.channelId ? '· ch ' + esc(String(j.payload.channelId).slice(-6)) : ''}</span></span>
-    <span class="meta"><button class="mic" data-a="toggle" data-id="${j.id}">${j.active ? 'pause' : 'resume'}</button><button class="mic" data-a="del" data-id="${j.id}">✕</button></span></div>`).join('') || '<div class="empty">no jobs</div>'}</div>`;
+    <span class="t"><b>${esc(j.name)}</b> <span class="count">${esc(j.type === 'send_message' ? 'send' : 'presence')} · every ${everyLabel(j.intervalMs)} · ran ${j.runCount}× · ${j.lastStatus || '—'}</span></span>
+    <span class="meta"><button class="ibtn" data-a="toggle" data-id="${j.id}" title="${j.active ? 'pause' : 'resume'}">${ic(j.active ? 'stop' : 'play', 14)}</button><button class="ibtn danger" data-a="del" data-id="${j.id}" title="delete">${ic('trash', 14)}</button></span></div>`).join('') || `<div class="empty">${ic('clock', 14)} no jobs scheduled</div>`}</div>`;
   $('#jobNew').onclick = () => {
     const m = modal('new scheduler job', `
       <div class="field"><label>name</label><input id="_jn" placeholder="daily ping"></div>
-      <div class="field"><label>type</label><select id="_jt"><option value="send_message">send_message</option><option value="change_presence">change_presence</option></select></div>
-      <div class="field"><label>channel id (send_message)</label><input id="_jc" value="${esc(W.channel?.id || '')}"></div>
-      <div class="field"><label>content (send_message)</label><textarea id="_jx" rows="2" placeholder="repeating message…"></textarea></div>
-      <div class="field"><label>presence status (change_presence)</label><select id="_js"><option value="online">online</option><option value="idle">idle</option><option value="dnd">dnd</option><option value="invisible">invisible</option></select></div>
+      <div class="field"><label>type</label><select id="_jt"><option value="send_message">send message</option><option value="change_presence">change presence</option></select></div>
+      <div class="field"><label>channel (send message)</label><select id="_jc">${W.channels.filter(c => c.type === 0 || c.type === 5).map(c => `<option value="${c.id}" ${W.channel?.id === c.id ? 'selected' : ''}>#${esc(c.name)}</option>`).join('')}</select></div>
+      <div class="field"><label>content</label><div class="cwrap"><textarea id="_jx" rows="2" data-max="${DISCORD_MSG_MAX}" placeholder="repeating message…"></textarea><span class="ccount"></span></div></div>
+      <div class="field"><label>status (change presence)</label><select id="_js"><option value="online">online</option><option value="idle">idle</option><option value="dnd">dnd</option><option value="invisible">invisible</option></select></div>
       <div class="field"><label>every</label><select id="_ji"><option value="60000">minute</option><option value="3600000">hour</option><option value="86400000" selected>day</option><option value="604800000">week</option></select></div>`,
-      `<button class="btn primary" data-ok>create</button>`);
+      `<button class="btn primary" data-ok>${ic('plus', 13)}<span>create</span></button>`);
+    bindCounter(m.el.querySelector('#_jx'));
     m.el.querySelector('[data-ok]').onclick = async () => {
       const type = m.el.querySelector('#_jt').value;
       const id = 'job' + Date.now().toString(36);
+      const content = m.el.querySelector('#_jx').value.trim();
+      if (type === 'send_message' && content.length > DISCORD_MSG_MAX) return tt('content over 2000 chars', true);
       const body = { name: m.el.querySelector('#_jn').value, type, intervalMs: parseInt(m.el.querySelector('#_ji').value, 10),
-        payload: type === 'send_message' ? { channelId: m.el.querySelector('#_jc').value, content: m.el.querySelector('#_jx').value } : { botId: W.me.id, status: m.el.querySelector('#_js').value } };
-      if (type === 'send_message' && !body.payload.channelId) return tt('channel id required', true);
-      await bapi(`/gateway/scheduler/job/${id}`, { method: 'POST', body });
-      tt('job created'); m.close(); renderView();
+        payload: type === 'send_message' ? { channelId: m.el.querySelector('#_jc').value, content } : { botId: W.me.id, status: m.el.querySelector('#_js').value } };
+      try {
+        await bapi(`/gateway/scheduler/job/${id}`, { method: 'POST', body });
+        tt('job created'); m.close(); renderView();
+      } catch (e) { tt(e.message, true); }
     };
   };
   v.onclick = e => {
-    const b = e.target.closest('.mic'); if (!b) return;
-    if (b.dataset.a === 'toggle') bapi(`/gateway/scheduler/job/${b.dataset.id}/toggle`, { method: 'POST' }).then(renderView);
+    const b = e.target.closest('.ibtn'); if (!b) return;
+    if (b.dataset.a === 'toggle') bapi(`/gateway/scheduler/job/${b.dataset.id}/toggle`, { method: 'POST', body: {} }).then(renderView);
     if (b.dataset.a === 'del') confirmModal('delete job', 'delete this job?', async () => { await bapi(`/gateway/scheduler/job/${b.dataset.id}`, { method: 'DELETE' }); renderView(); });
   };
 }
@@ -516,34 +639,40 @@ function everyLabel(ms) { return ms >= 604800000 ? Math.round(ms / 604800000) + 
 
 /* ---- voice ---- */
 async function viewVoice(v) {
-  const st = await bapi(`/gateway/${W.me.id}/voice/status`).catch(() => ({ connected: false }));
+  let st = { connected: false };
+  try { st = await bapi(`/gateway/${W.me.id}/voice/status`); } catch {}
   const voiceChans = W.channels.filter(c => c.type === 2 || c.type === 13);
-  v.innerHTML = `<div class="toolbar"><span class="count">gateway ${st.connected ? 'connected' : 'DOWN'} · voice ${st.voice ? 'in #' + esc(st.voice.channel_name || st.voice.channel_id) : 'idle'} ${st.playing ? '· playing' : ''}</span>
-    <button class="mic" id="vsRefresh">refresh</button></div>
+  v.innerHTML = `<div class="toolbar">
+    <span class="chip ${st.connected ? 'on' : 'off'}"><i></i>gateway ${st.connected ? 'up' : 'down'}</span>
+    <span class="chip ${st.voice ? 'on' : 'off'}"><i></i>voice ${st.voice ? esc(st.voice.channel_name || String(st.voice.channel_id).slice(-6)) : 'idle'}</span>
+    ${st.playing ? `<span class="chip on"><i></i>playing</span>` : ''}
+    <span class="spacer"></span><button class="ibtn" id="vsRefresh" title="refresh">${ic('refresh', 15)}</button></div>
   <div class="mem-list">${voiceChans.map(c => `<div class="list-item">
-    <span class="t">♪ <b>${esc(c.name)}</b></span>
-    <span class="meta"><button class="mic" data-a="join" data-id="${c.id}">join</button><button class="mic" data-a="play" data-id="${c.id}">play file</button></span></div>`).join('') || '<div class="empty">no voice channels visible</div>'}</div>
-  <div class="btn-row" style="margin-top:10px"><button class="btn danger" id="vLeave">leave voice</button><button class="btn" id="vStop">stop playback</button></div>
+    <span class="t">${ic('speaker', 14)} <b>${esc(c.name)}</b></span>
+    <span class="meta"><button class="ibtn" data-a="join" data-id="${c.id}" title="join">${ic('arrowup', 14)}</button><button class="ibtn" data-a="play" data-id="${c.id}" title="play audio file">${ic('play', 14)}</button></span></div>`).join('') || `<div class="empty">${ic('speaker', 14)} no voice channels visible</div>`}</div>
+  <div class="btn-row" style="margin-top:10px"><button class="btn danger" id="vLeave">leave voice</button><button class="btn" id="vStop">${ic('stop', 13)}<span>stop playback</span></button></div>
   <input type="file" id="vFile" accept="audio/*,video/*" hidden>`;
   $('#vsRefresh').onclick = renderView;
-  $('#vLeave').onclick = () => bapi(`/gateway/${W.me.id}/voice/leave`, { method: 'POST', body: {} }).then(() => { tt('left voice'); renderView(); });
-  $('#vStop').onclick = () => bapi(`/gateway/${W.me.id}/voice/stop`, { method: 'POST', body: {} }).then(() => { tt('stopped'); renderView(); });
+  $('#vLeave').onclick = () => bapi(`/gateway/${W.me.id}/voice/leave`, { method: 'POST', body: {} }).then(() => { tt('left voice'); renderView(); }).catch(e => tt(e.message, true));
+  $('#vStop').onclick = () => bapi(`/gateway/${W.me.id}/voice/stop`, { method: 'POST', body: {} }).then(() => { tt('stopped'); renderView(); }).catch(e => tt(e.message, true));
   v.onclick = async e => {
-    const b = e.target.closest('.mic[data-join],.mic[data-play]'); if (!b) return;
+    const b = e.target.closest('.ibtn[data-join],.ibtn[data-play]'); if (!b) return;
     const cid = b.dataset.id;
     if (b.dataset.a === 'join') {
+      tt('connecting…');
       await bapi(`/gateway/${W.me.id}/connect`, { method: 'POST', body: {} }).catch(() => {}); // ensure live session (token injected server-side)
-      await bapi(`/gateway/${W.me.id}/voice/join`, { method: 'POST', body: { guild_id: W.guild.id, channel_id: cid } }); tt('joined'); renderView();
+      try { await bapi(`/gateway/${W.me.id}/voice/join`, { method: 'POST', body: { guild_id: W.guild.id, channel_id: cid } }); tt('joined'); renderView(); }
+      catch (err) { tt(err.message, true); }
     }
     if (b.dataset.a === 'play') {
-      await bapi(`/gateway/${W.me.id}/connect`, { method: 'POST', body: {} }).catch(() => {});
       $('#vFile').onchange = async ev => {
         const f = ev.target.files[0]; if (!f) return;
+        if (f.size > 20 * 1024 * 1024) { tt('file too large (>20MB)', true); ev.target.value = ''; return; }
         const rd = new FileReader();
         rd.onload = async () => {
-          if (f.size > 20 * 1024 * 1024) return tt('file too large (>20MB)', true);
-          tt('playing… (transcode may take a few s)');
+          tt('uploading + transcoding…');
           try {
+            await bapi(`/gateway/${W.me.id}/connect`, { method: 'POST', body: {} }).catch(() => {});
             await bapi(`/gateway/${W.me.id}/voice/play`, { method: 'POST', body: { guild_id: W.guild.id, channel_id: cid, audio_base64: btoa(rd.result), filename: f.name } });
             tt('playing ' + f.name); renderView();
           } catch (err) { tt(err.message, true); }
@@ -561,16 +690,19 @@ async function viewBackups(v) {
   const r = await fetch('/api/backups').then(x => x.json());
   const chans = W.channels.filter(c => c.type === 0 || c.type === 5);
   v.innerHTML = `<div class="toolbar"><select id="bkChan">${chans.map(c => `<option value="${c.id}">#${esc(c.name)}</option>`).join('')}</select>
-    <button class="btn primary" id="bkOne">backup channel</button>
-    <button class="btn" id="bkAll">backup ALL</button><span class="count" id="bkProg"></span></div>
+    <button class="btn primary" id="bkOne">${ic('download', 13)}<span>backup channel</span></button>
+    <button class="btn" id="bkAll">${ic('download', 13)}<span>backup ALL</span></button><span class="count" id="bkProg"></span></div>
   <div class="mem-list">${(r.items || []).map(b => `<div class="list-item">
-    <span class="t">${esc(b.name)}</span>
-    <span class="meta"><span class="sz">${(b.size / 1024).toFixed(0)}KB</span><span class="src">${esc(b.src)}</span><span class="tm">${new Date(b.mtime).toLocaleString()}</span><a class="mic" href="/api/backups/file/${encodeURIComponent(b.name)}" download>⬇</a></span></div>`).join('') || '<div class="empty">no backups on disk</div>'}</div>`;
+    <span class="t">${ic('file', 13)} ${esc(b.name)}</span>
+    <span class="meta"><span class="sz">${(b.size / 1024).toFixed(0)}KB</span><span class="src">${esc(b.src)}</span><span class="tm">${new Date(b.mtime).toLocaleString()}</span><a class="ibtn" href="/api/backups/file/${encodeURIComponent(b.name)}" download title="download">${ic('download', 14)}</a></span></div>`).join('') || `<div class="empty">${ic('file', 14)} no backups on disk</div>`}</div>`;
   $('#bkOne').onclick = async () => {
     const id = $('#bkChan').value; if (!id) return;
     $('#bkProg').textContent = 'backing up…';
-    const res = await bapi(`/gateway/backup/channel/${id}`, { method: 'POST', body: {} });
-    tt(`backup: ${res.messageCount} messages → ${res.filename}`); $('#bkProg').textContent = ''; renderView();
+    try {
+      const res = await bapi(`/gateway/backup/channel/${id}`, { method: 'POST', body: {} });
+      tt(`backup: ${res.messageCount} messages → ${res.filename}`);
+    } catch (e) { tt(e.message, true); }
+    $('#bkProg').textContent = ''; renderView();
   };
   $('#bkAll').onclick = () => confirmModal('backup all channels', `archive every text channel of "${W.guild.name}" (slow, rate-limit safe)?`, async () => {
     let done = 0;

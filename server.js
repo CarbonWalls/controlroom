@@ -37,13 +37,15 @@ function json(res, code, obj) {
 }
 function readBody(req, limit = 1024 * 1024) {
   return new Promise((resolve, reject) => {
-    let buf = '', len = 0;
+    let buf = '', len = 0, overflow = null;
+    // drain-then-throw: a mid-stream req.destroy() resets the socket before the
+    // 413 can be delivered, so the client sees ECONNRESET instead of an error
     req.on('data', c => {
       len += c.length;
-      if (len > limit) { reject(new Error('too large')); req.destroy(); return; }
+      if (len > limit) { if (!overflow) overflow = new Error('too large'); return; }
       buf += c;
     });
-    req.on('end', () => resolve(buf));
+    req.on('end', () => overflow ? reject(overflow) : resolve(buf));
     req.on('error', reject);
   });
 }
@@ -331,10 +333,16 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, { ok: true });
     }
     function redactProviders(prov) {
-      // providers.json uses "${ENV_VAR}" placeholders — already safe; strip any literal key-looking values
-      const s = JSON.stringify(prov);
-      if (/[A-Za-z0-9_-]{32,}\.sk-|sk-[A-Za-z0-9_-]{20,}/.test(s)) return { redacted: true };
-      return prov;
+      // structural strip: api_key (and lookalikes) NEVER leave the server,
+      // placeholder or raw — the UI only needs name/url/model routing info
+      const SAFE = (o) => Array.isArray(o)
+        ? o.map(SAFE)
+        : (o && typeof o === 'object')
+          ? Object.fromEntries(Object.entries(o)
+              .filter(([k]) => !/key|secret|token|password/i.test(k))
+              .map(([k, v]) => [k, SAFE(v)]))
+          : o;
+      return SAFE(prov);
     }
 
     /* --- bridge proxy (nonce handled server-side) --- */
@@ -376,7 +384,7 @@ const server = http.createServer(async (req, res) => {
       }
       let bodyObj = null;
       if (req.method !== 'GET' && req.method !== 'DELETE') {
-        const raw = await readBody(req);
+        const raw = await readBody(req, 25 * 1024 * 1024);
         try { bodyObj = raw ? JSON.parse(raw) : null; } catch { bodyObj = null; }
         // gateway routes demanding the bot token in the JSON body: inject server-side
         if (bodyObj && typeof bodyObj === 'object' && !bodyObj.token &&
@@ -435,7 +443,8 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'GET') return serveStatic(res, p);
     return json(res, 405, { ok: false, error: 'method' });
   } catch (e) {
-    return json(res, 500, { ok: false, error: String(e.message || e) });
+    const msg = String(e.message || e);
+    return json(res, msg === 'too large' ? 413 : 500, { ok: false, error: msg });
   }
 });
 

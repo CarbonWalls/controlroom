@@ -84,6 +84,7 @@ let bridgePort = 0;
 let bridgeNonce = '';
 let bridgeNonceTs = 0;
 
+let whoamiCache = null;
 // bot token for proxied /discord calls — loaded once, never exposed by any endpoint
 const BRIDGE_ENV = process.env.BRIDGE_ENV || path.join(HOME, 'projects/bot-mn-1-debug/.env');
 const BOT_TOKEN = (() => {
@@ -138,6 +139,11 @@ async function bridgeApi(method, urlPath, body = null) {
   const nonce = await getBridgeNonce();
   const headers = { 'content-type': 'application/json', 'x-client-nonce': nonce };
   if (urlPath.startsWith('/discord/')) headers['x-bot-token'] = BOT_TOKEN;
+  // gateway routes that demand the bot token in the JSON body: inject it
+  if (body && typeof body === 'object' && !body.token &&
+      (/^\/gateway\/[^/]+\/(connect|members\/[^/]+)$/.test(urlPath) || /^\/gateway\/backup\/channel\//.test(urlPath))) {
+    body = { ...body, token: BOT_TOKEN };
+  }
   const hb = body ? JSON.stringify(body) : null;
   let r = await bridgeRaw(method, urlPath, headers, hb);
   if (r.status === 403 && nonce) { // stale nonce: refetch once
@@ -336,16 +342,71 @@ const server = http.createServer(async (req, res) => {
       await refreshBridge();
       return json(res, 200, { ok: !!bridgePort, url: `http://127.0.0.1:${bridgePort}/` });
     }
+    if (p === '/api/whoami' && req.method === 'GET') {
+      if (!whoamiCache && BOT_TOKEN) {
+        await refreshBridge();
+        if (bridgePort) {
+          const nonce = await getBridgeNonce();
+          const r = await bridgeRaw('GET', '/discord/users/@me', { 'x-client-nonce': nonce, 'x-bot-token': BOT_TOKEN });
+          if (r.json && r.json.id) whoamiCache = { id: r.json.id, username: r.json.username, discriminator: r.json.discriminator, avatar: r.json.avatar };
+        }
+      }
+      return json(res, 200, { ok: !!whoamiCache, token_present: !!BOT_TOKEN, user: whoamiCache });
+    }
     if (p.startsWith('/api/bridge/')) {
       const sub = p.slice('/api/bridge'.length);
       if (!sub.startsWith('/')) return json(res, 400, { ok: false });
+      const ct = req.headers['content-type'] || '';
+      if (ct.startsWith('multipart/')) {
+        // file uploads: stream the raw multipart body through untouched
+        await refreshBridge();
+        if (!bridgePort) return json(res, 502, { ok: false, error: 'bridge offline' });
+        const nonce = await getBridgeNonce();
+        const chunks = [];
+        let len = 0;
+        for await (const c of req) { len += c.length; if (len > 25 * 1024 * 1024) return json(res, 413, { ok: false, error: 'too large' }); chunks.push(c); }
+        const up = http.request({ host: '127.0.0.1', port: bridgePort, path: sub + url.search, method: req.method,
+          headers: { 'content-type': ct, 'content-length': len, 'x-client-nonce': nonce, 'x-bot-token': BOT_TOKEN } }, pres => {
+          res.writeHead(pres.statusCode, { 'content-type': pres.headers['content-type'] || 'application/json' });
+          pres.pipe(res);
+        });
+        up.on('error', e => json(res, 502, { ok: false, error: e.message }));
+        up.end(Buffer.concat(chunks));
+        return;
+      }
       let bodyObj = null;
       if (req.method !== 'GET' && req.method !== 'DELETE') {
         const raw = await readBody(req);
         try { bodyObj = raw ? JSON.parse(raw) : null; } catch { bodyObj = null; }
+        // gateway routes demanding the bot token in the JSON body: inject server-side
+        if (bodyObj && typeof bodyObj === 'object' && !bodyObj.token &&
+            (/^\/gateway\/[^/]+\/(connect|members\/[^/]+)$/.test(sub) || /^\/gateway\/backup\/channel\//.test(sub))) {
+          bodyObj.token = BOT_TOKEN;
+        }
+        // scheduler send_message jobs carry payload.token — same treatment
+        if (bodyObj && bodyObj.payload && typeof bodyObj.payload === 'object' && !bodyObj.payload.token && bodyObj.type === 'send_message') {
+          bodyObj.payload = { ...bodyObj.payload, token: BOT_TOKEN };
+        }
       }
-      const r = await bridgeApi(req.method, sub, bodyObj);
+      const r = await bridgeApi(req.method, sub + url.search, bodyObj);
       return json(res, r.status || 502, r.json || { ok: false, error: r.error || 'bridge unreachable', status: r.status });
+    }
+
+    if (p.startsWith('/api/backups/file/') && req.method === 'GET') {
+      const name = decodeURIComponent(p.slice('/api/backups/file/'.length));
+      if (!/^[A-Za-z0-9._-]+\.json$/.test(name)) return json(res, 400, { ok: false, error: 'bad name' });
+      const dirs = [
+        path.join(HOME, 'projects/bot-mn-1-debug/data/messages/backups'),
+        path.join(HOME, 'projects/bot-mn-1/data/messages/backups'),
+      ];
+      for (const d of dirs) {
+        const f = path.join(d, name);
+        if (fs.existsSync(f)) {
+          res.writeHead(200, { 'content-type': 'application/json', 'content-disposition': `attachment; filename=\"${name}\"` });
+          return fs.createReadStream(f).pipe(res);
+        }
+      }
+      return json(res, 404, { ok: false, error: 'not found' });
     }
 
     if (p === '/api/backups' && req.method === 'GET') {

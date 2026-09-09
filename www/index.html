@@ -74,37 +74,15 @@
     </div>
   </section>
 
-  <!-- ============ BRIDGE ============ -->
+  <!-- ============ BRIDGE = discord workspace (native full ui) ============ -->
   <section class="page" id="page-bridge">
-    <div class="panel">
-      <div class="panel-head"><h2>bridge status</h2><div class="head-actions"><a class="ghost-btn" id="bridgeOpen" href="#" target="_blank" rel="noopener">open full ui ↗</a></div></div>
-      <div class="panel-body">
-        <div class="kv" id="brKv"></div>
-        <div class="btn-row" id="brQuick"></div>
-      </div>
-    </div>
-    <div class="col2">
-      <div class="panel">
-        <div class="panel-head"><h2>gateway sessions</h2><button class="ghost-btn" id="sessRefresh">refresh</button></div>
-        <div class="panel-body"><div id="sessList" class="list"><div class="empty">— not loaded —</div></div></div>
-      </div>
-      <div class="panel">
-        <div class="panel-head"><h2>rate limits</h2><button class="ghost-btn" id="rlRefresh">refresh</button></div>
-        <div class="panel-body"><div id="rlList" class="list"><div class="empty">— not loaded —</div></div></div>
-      </div>
-    </div>
-    <div class="panel">
-      <div class="panel-head"><h2>scheduler jobs</h2><button class="ghost-btn" id="jobsRefresh">refresh</button></div>
-      <div class="panel-body"><div id="jobsList" class="list"></div></div>
-    </div>
-    <div class="panel">
-      <div class="panel-head"><h2>channel backups</h2><span class="hint">both clones · newest 30</span></div>
-      <div class="panel-body"><div id="backupList" class="list"></div></div>
-    </div>
+    <div class="ws-status" id="wsStatus"></div>
+    <div class="ws-host" id="wsHost"><div class="empty">loading workspace…</div></div>
   </section>
 </main>
 
 <div class="toast" id="toast"></div>
+<script src="discord.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

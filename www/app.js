@@ -65,17 +65,11 @@ function renderStatus(st) {
   bindIf('humStopBtn', () => act('/api/hum/stop'));
   bindIf('humRestartBtn', async () => { await act('/api/hum/stop'); await new Promise(r => setTimeout(r, 1200)); await act('/api/hum/start'); });
 
-  // bridge panel
-  $('#brKv').innerHTML = kvs([
-    ['state', st.bridge.up ? 'running' : 'stopped'],
-    ['port', st.bridge.port || '—'],
-    ['version', st.bridge.version || '—'],
-    ['uptime', fmtUp(st.bridge.uptime_s)],
-    ['sessions', st.bridge.sessions ?? '—'],
-    ['memory', st.bridge.memory_mb ? st.bridge.memory_mb + ' MB' : '—'],
-  ]);
-  $('#bridgeOpen').href = st.bridge.up ? `http://127.0.0.1:${st.bridge.port}/` : '#';
-  $('#brQuick').innerHTML = '';
+  // bridge status strip above the workspace
+  const ws = $('#wsStatus');
+  if (ws) ws.innerHTML = st.bridge.up
+    ? `<span class="chip on"><i></i>bridge :${st.bridge.port} · ${st.bridge.sessions} session(s) · ${fmtUp(st.bridge.uptime_s)} up · ${st.bridge.memory_mb}MB</span>`
+    : '<span class="chip off"><i></i>bridge offline</span>';
 }
 function svcCard(name, role, on, stats) {
   return `<div class="svc ${on ? 'is-on' : ''}">
@@ -95,12 +89,14 @@ async function act(path) {
 }
 
 /* ---- tabs ---- */
+let wsMounted = false;
+const _origToast = toast; window.crToast = toast;
 $('#tabs').onclick = e => {
   const b = e.target.closest('.tab'); if (!b) return;
   $$('.tab').forEach(t => t.classList.toggle('active', t === b));
   $$('.page').forEach(p => p.classList.toggle('active', p.id === 'page-' + b.dataset.tab));
   if (b.dataset.tab === 'mercury') loadCfg();
-  if (b.dataset.tab === 'bridge') loadBridgePanels(true);
+  if (b.dataset.tab === 'bridge') mountWs();
 };
 
 /* ---- log view ---- */
@@ -201,69 +197,13 @@ $('#memSave').onclick = async () => {
   catch (e) { toast(e.message, true); }
 };
 
-/* ---- bridge panels ---- */
-let bridgePanelTs = 0;
-function loadBridgePanels(force) {
-  if (!STATUS || !STATUS.bridge.up) return;
-  if (!force && Date.now() - bridgePanelTs < 4000) return;
-  bridgePanelTs = Date.now();
-  loadSessions(); loadRateLimits(); loadJobs(); loadBackups();
+/* ---- workspace mount ---- */
+function mountWs() {
+  if (wsMounted) { window.crWorkspace.reload && window.crWorkspace.reload(); return; }
+  if (!STATUS || !STATUS.bridge.up) { $('#wsHost').innerHTML = '<div class="empty">bridge offline — start bot-mn-1 (node bridge.js), then reopen this tab.</div>'; return; }
+  wsMounted = true;
+  window.crWorkspace.mount($('#wsHost'));
 }
-async function loadSessions() {
-  const el = $('#sessList');
-  try {
-    const r = await api('/api/bridge/gateway/status');
-    const list = r.sessions || [];
-    el.innerHTML = list.length
-      ? list.map(s => `<div class="list-item"><span class="t">bot ${esc(String(s.id).slice(0, 8))}… · ${esc(s.user?.username || '?')}</span><span class="meta"><span class="src">${s.connected ? 'conn' : 'down'}</span><span class="tm">${esc((s.presence || '') + (s.voicePlaying ? ' · voice' : ''))}</span></span></div>`).join('')
-      : '<div class="empty">no live gateway sessions</div>';
-  } catch (e) { el.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
-}
-async function loadRateLimits() {
-  const el = $('#rlList');
-  try {
-    const r = await api('/api/bridge/gateway/rate-limits');
-    const arr = r.limits || [];
-    el.innerHTML = arr.length
-      ? arr.slice(0, 30).map(b => `<div class="list-item"><span class="t">${esc(String(b.bucket).slice(0, 38))}</span><span class="meta"><span class="sz">${b.remaining ?? '?'}/${b.limit ?? '?'}</span></span></div>`).join('')
-      : '<div class="empty">no rate-limit buckets tracked yet</div>';
-  } catch (e) { el.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
-}
-async function loadJobs() {
-  const el = $('#jobsList');
-  try {
-    const r = await api('/api/bridge/gateway/scheduler/jobs');
-    const jobs = r.jobs || [];
-    el.innerHTML = jobs.length
-      ? jobs.map(j => `<div class="list-item"><span class="t">${esc(j.name || j.id)}</span><span class="meta"><span class="src">${esc(j.kind || '')}</span><span class="tm">${esc(j.every ? everyLabel(j.every) : (j.run_at ? fmtDate(j.run_at) : ''))}${j.enabled === false ? ' · off' : ''}</span></span></div>`).join('')
-      : '<div class="empty">no scheduler jobs</div>';
-  } catch (e) { el.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
-}
-const MON = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
-function fmtDate(ms) {
-  const d = new Date(ms);
-  const p = n => String(n).padStart(2, '0');
-  return `${p(d.getDate())} ${MON[d.getMonth()]} ${p(d.getHours())}:${p(d.getMinutes())}`;
-}
-function everyLabel(ms) {
-  if (ms >= 86400000) return Math.round(ms / 86400000) + 'd';
-  if (ms >= 3600000) return Math.round(ms / 3600000) + 'h';
-  if (ms >= 60000) return Math.round(ms / 60000) + 'm';
-  return Math.round(ms / 1000) + 's';
-}
-async function loadBackups() {
-  const el = $('#backupList');
-  try {
-    const r = await api('/api/backups');
-    const items = r.items || [];
-    el.innerHTML = items.length
-      ? items.map(b => `<div class="list-item"><span class="t">${esc(b.name)}</span><span class="meta"><span class="sz">${(b.size / 1024).toFixed(0)}KB</span><span class="src">${esc(b.src)}</span><span class="tm">${esc(fmtDate(b.mtime))}</span></span></div>`).join('')
-      : '<div class="empty">no backups on disk</div>';
-  } catch (e) { el.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
-}
-$('#jobsRefresh').onclick = () => loadBridgePanels(true);
-$('#sessRefresh').onclick = () => loadBridgePanels(true);
-$('#rlRefresh').onclick = () => loadBridgePanels(true);
 
 /* ---- poll ---- */
 let firstPaint = true;
@@ -272,7 +212,7 @@ async function refresh() {
   if (firstPaint) {
     firstPaint = false;
     if (STILLTAB === 'mercury') loadCfg();
-    if (STILLTAB === 'bridge') loadBridgePanels(true);
+    if (STILLTAB === 'bridge') mountWs();
   }
 }
 const STILL = new URLSearchParams(location.search).has('still'); // ?still=1 → no SSE/polling (headless screenshot mode)

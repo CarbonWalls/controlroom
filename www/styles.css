@@ -147,7 +147,8 @@ main.shell > section.page { min-height: 0; }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: #04281f; }
 .btn.danger { background: transparent; border-color: rgba(240,74,85,.5); color: #ff8f97; }
 .btn.danger:hover { background: rgba(240,74,85,.12); }
-.btn:disabled { opacity: .45; cursor: not-allowed; }
+.btn:disabled { opacity: .35; cursor: not-allowed; filter: grayscale(.55); }
+.btn:disabled:hover { filter: grayscale(.55); brightness(1); }
 .ghost-btn {
   appearance: none; border: 1px solid var(--line2); background: transparent; color: var(--fg2);
   font: 600 11px var(--mono); padding: 5px 10px; border-radius: 7px; cursor: pointer;
@@ -354,10 +355,16 @@ input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px;
 .ibtn svg, .mic svg, .btn svg, .st svg, .ghost-btn svg, .chan .ci svg { display: block; flex: none; }
 .chan .ci { display: inline-flex; }
 .cat-row {
-  display: flex; align-items: center; gap: 5px; padding: 8px 9px 3px;
+  display: flex; align-items: center; gap: 5px; padding: 8px 10px; margin-top: 6px;
   font: 700 10.5px var(--mono); color: var(--fg3); text-transform: uppercase; letter-spacing: .6px;
   cursor: pointer; user-select: none;
+  background: var(--card); border: 1px solid var(--line); border-radius: 8px;
 }
+.cat-row .cat-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.cat-row .count { flex: none; }
+.cat-group .list-item { border-radius: 0; border-top: 0; }
+.cat-group .list-item:first-child { border-top: 1px solid var(--line); border-radius: 8px 8px 0 0; }
+.cat-group .list-item:last-child { border-radius: 0 0 8px 8px; }
 .cat-row:hover { color: var(--fg2); }
 .cat-row .cat-caret { display: inline-flex; transition: transform .15s; }
 .cat-row.shut .cat-caret { transform: rotate(-90deg); }

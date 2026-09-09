@@ -743,10 +743,10 @@ async function viewVoice(v) {
   const cur = st.voice ? voiceChans.find(c => String(c.id) === String(st.voice.channel_id)) : null;
   v.innerHTML = `
   <div class="panel vplayer ${st.voice ? '' : 'idle'}">
-    <div class="panel-head"><h2>${ic('speaker', 13)} voice — ${st.voice ? '#' + esc(cur?.name || st.voice.channel_name || st.voice.channel_id) : 'not connected'}</h2>
+    <div class="panel-head"><h2>${ic('speaker', 13)} voice player${st.voice ? ' — #' + esc(cur?.name || st.voice.channel_name || st.voice.channel_id) : ''}</h2>
       <span class="badge ${st.playing ? 'on' : 'off'}">${st.playing ? 'playing' : 'idle'}</span></div>
     <div class="panel-body">
-      <div class="vp-meta">${st.playing ? ic('play', 26) : ic('speaker', 26)}<div><b>${st.playing ? esc(st.track || 'audio stream') : st.voice ? 'connected — nothing queued' : 'not connected to any voice channel'}</b><span class="count">${st.playing ? 'streaming to voice' : st.voice ? 'pick a file below or join another channel' : 'join a channel from the list below'}</span></div></div>
+      <div class="vp-meta">${st.playing ? ic('play', 26) : ic('speaker', 26)}<div><b>${st.playing ? esc(st.track || 'audio stream') : st.voice ? 'connected — nothing queued' : 'idle — join a channel to stream'}</b><span class="count">${st.playing ? 'streaming to voice' : st.voice ? 'pick a file below or join another channel' : ''}</span></div></div>
       <div class="btn-row">
         <button class="btn primary" id="vPlay2" ${st.voice ? '' : 'disabled'}>${ic('play', 13)}<span>play file</span></button>
         <button class="btn danger" id="vStop2" ${st.playing ? '' : 'disabled'}>${ic('stop', 13)}<span>stop</span></button>
@@ -799,7 +799,7 @@ async function viewVoice(v) {
     }
     if (b.dataset.a === 'play') pickFile(cid);
   };
-  if ($('#vPlay2')) $('#vPlay2').onclick = () => pickFile(cur?.id || st.voice.channel_id);
+  if ($('#vPlay2')) $('#vPlay2').onclick = () => { if (!st.voice) return tt('join a channel first', true); pickFile(cur?.id || st.voice.channel_id); };
 }
 function bindIf2(scope, id, fn) { const el = scope.querySelector('#' + id); if (el) el.onclick = fn; }
 

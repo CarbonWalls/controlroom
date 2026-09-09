@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark light">
+<title>controlroom</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="topbar"><div class="topbar-in">
+  <div class="brand">
+    <span class="brand-dot"></span>
+    <span class="brand-name">controlroom</span>
+  </div>
+  <div class="top-chips" id="topChips"></div>
+</div></header>
+
+<main class="shell">
+  <nav class="tabs" id="tabs">
+    <button class="tab active" data-tab="overview">overview</button>
+    <button class="tab" data-tab="mercury">mercury</button>
+    <button class="tab" data-tab="bridge">bridge</button>
+  </nav>
+
+  <!-- ============ OVERVIEW ============ -->
+  <section class="page active" id="page-overview">
+    <div class="svc-grid" id="svcGrid"></div>
+    <div class="panel logpanel">
+      <div class="panel-head">
+        <h2>live log — run.log (mercury)</h2>
+        <div class="head-actions">
+          <button class="ghost-btn" id="logClearBtn">clear</button>
+          <button class="ghost-btn active" id="logFollowBtn">follow</button>
+        </div>
+      </div>
+      <pre class="logview" id="logView"></pre>
+    </div>
+  </section>
+
+  <!-- ============ MERCURY ============ -->
+  <section class="page" id="page-mercury">
+    <div class="col2">
+      <div class="panel">
+        <div class="panel-head"><h2>controls</h2></div>
+        <div class="panel-body">
+          <div class="kv" id="humKv"></div>
+          <div class="btn-row" id="humBtns"></div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h2>outbox</h2><span class="hint">drop → mercury posts it</span></div>
+        <div class="panel-body">
+          <textarea id="outboxText" rows="5" placeholder="type what mercury should say…"></textarea>
+          <div class="btn-row">
+            <button class="btn primary" id="outboxSend">queue message</button>
+            <span class="count" id="outboxCount"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="col2">
+      <div class="panel">
+        <div class="panel-head"><h2>config</h2><span class="hint">hot-reload ~3s, no restart</span></div>
+        <div class="panel-body" id="cfgForm"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h2>memory.md</h2><span class="hint">persona notes</span></div>
+        <div class="panel-body">
+          <textarea id="memText" rows="10" spellcheck="false"></textarea>
+          <div class="btn-row"><button class="btn primary" id="memSave">save notes</button></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ BRIDGE ============ -->
+  <section class="page" id="page-bridge">
+    <div class="panel">
+      <div class="panel-head"><h2>bridge status</h2><div class="head-actions"><a class="ghost-btn" id="bridgeOpen" href="#" target="_blank" rel="noopener">open full ui ↗</a></div></div>
+      <div class="panel-body">
+        <div class="kv" id="brKv"></div>
+        <div class="btn-row" id="brQuick"></div>
+      </div>
+    </div>
+    <div class="col2">
+      <div class="panel">
+        <div class="panel-head"><h2>gateway sessions</h2><button class="ghost-btn" id="sessRefresh">refresh</button></div>
+        <div class="panel-body"><div id="sessList" class="list"><div class="empty">— not loaded —</div></div></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h2>rate limits</h2><button class="ghost-btn" id="rlRefresh">refresh</button></div>
+        <div class="panel-body"><div id="rlList" class="list"><div class="empty">— not loaded —</div></div></div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><h2>scheduler jobs</h2><button class="ghost-btn" id="jobsRefresh">refresh</button></div>
+      <div class="panel-body"><div id="jobsList" class="list"></div></div>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><h2>channel backups</h2><span class="hint">both clones · newest 30</span></div>
+      <div class="panel-body"><div id="backupList" class="list"></div></div>
+    </div>
+  </section>
+</main>
+
+<div class="toast" id="toast"></div>
+<script src="app.js"></script>
+</body>
+</html>

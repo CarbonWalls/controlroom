@@ -1,54 +1,53 @@
 # controlroom
 
-unified web panel for two self-hosted discord services on one termux box:
+single self-contained web app for running a discord **bot** (vendored bridge manager) and a discord **selfbot** (vendored mercury ambient agent) from one UI: chat, members, roles, channels (+permission editors), scheduler, voice player, channel backups, live logs, config hot-reload.
 
-- **mercury** — `~/projects/hum-testing/mercury3.py` (ambient chat selfbot, python)
-- **bridge** — `~/projects/bot-mn-1{,-debug}/bridge.js` (bot manager, node, port 8789)
+**the repo is the whole project.** clone it, install, paste tokens, run. there is nothing else to set up.
 
-one page: live status of both, start/stop/restart mercury, SSE live log tail,
-outbox composer, hot-reloadable config editor, persona notes editor, and a
-read-only window into the bridge (health, gateway sessions, rate limits,
-scheduler jobs, channel backups) proxied through the panel — the per-boot
-bridge nonce and the bot token are handled server-side, never exposed to the page.
-
-## stack
-
-zero dependencies: node >= 18 stdlib server + vanilla js/css frontend.
-mobile-first dark terminal aesthetic; tested at 320/390/1280 widths.
-
-## run
+## quick start
 
 ```
-./start.sh                # detached with pid file; re-run says "already running"
-node server.js            # binds 127.0.0.1:8800
-PORT=9000 node server.js  # custom port
-npm start                 # same, via package.json
+git clone https://github.com/CarbonWalls/controlroom.git
+cd controlroom
+npm i                      # ws, ffmpeg-static, @snazzah/davey for the vendored bridge
+cp bridge/.env.example bridge/.env && chmod 600 bridge/.env
+#   → edit bridge/.env: TOKEN_BOT=<bot token>   (bot token: discord dev portal)
+cp mercury/.env.template mercury/.env && chmod 600 mercury/.env   # optional
+#   → mercury/.env: DISCORD_TOKEN=<user token>  (selfbot — ban risk is yours)
+./start.sh                 # panel on http://127.0.0.1:8800
 ```
 
-env overrides: `HUM_DIR`, `BRIDGE_ENV` (path to the bridge's `.env` for the
-proxied discord calls), `BRIDGE_PORTS` (comma list to probe, default `8789,8793`).
+then open the panel → bridge tab → **start bridge**. that's it: the panel spawns the vendored bridge (port 8789) and drives it — you never touch a second terminal.
+
+## layout
+
+```
+server.js            panel (node stdlib only, :8800) — serves UI, proxies bridge, spawns both
+bridge/              vendored bot manager (bridge.js + tests + locales + data/ at runtime)
+mercury/             vendored selfbot (mercury3.py, config from .template, runtime data here)
+www/                 the UI (vanilla js/css, no build step)
+```
+
+runtime files created on first run (gitignored): `bridge/.env`, `bridge/data/`, `mercury/.env`, `mercury/config.json`, `mercury/run.log`, `mercury/outbox/`, `.tmp/`.
+
+## env overrides (all optional)
+
+| var | default | what |
+|---|---|---|
+| `PORT` | 8800 | panel port |
+| `BRIDGE_PORT` | 8789 | bridge port |
+| `BRIDGE_DIR` | ./bridge | vendored bridge dir |
+| `BRIDGE_START` | node bridge.js | bridge launch cmd |
+| `BRIDGE_ENV` | ./bridge/.env | bot token file |
+| `HUM_DIR` | ./mercury | selfbot dir |
 
 ## security notes
 
-- binds 127.0.0.1 only; nothing listens on the network
-- the panel never serves or logs `.env` contents; providers are key-redacted
-- config writes are deep-merged and validated (`channel_id` required) before
-  touching `config.json`; the mercury watchdog hot-reloads within ~3s
-- `/api/bridge/*` attaches the bridge session nonce + bot token server-side
+- binds 127.0.0.1 only; CSRF/dns-rebind guarded (sec-fetch-site + Host checks)
+- bot token + bridge nonce are injected server-side, never sent to the page
+- `.env` files are gitignored and never served; providers keys are stripped structurally
+- mercury is a selfbot: using a user token violates discord ToS — the ban risk is yours
 
-## endpoints
+## legacy
 
-| route | what |
-|---|---|
-| `GET /api/status` | both services: pid, uptime, mem, bridge health |
-| `GET /api/logs?tail=N` · `GET /api/logs/follow` | run.log tail / SSE stream |
-| `POST /api/hum/start` · `stop` | lifecycle via flock-detected pid |
-| `POST /api/hum/outbox` | queue a .txt for mercury to post |
-| `GET/POST /api/hum/config` | config.json editor (deep-merge) |
-| `GET/POST /api/hum/memory` | persona notes |
-| `GET /api/backups` | channel backups from both bridge clones |
-| `ANY /api/bridge/*` | nonce+token-injecting bridge proxy |
-
-?still=1&tab=X forces a static render for headless screenshots.
-
-*the mercury service is a selfbot; account risk is on its owner.*
+this app replaced two separate projects (`bot-mn-1` bot manager + `hum-testing` selfbot). both are vendored here; the old folders are no longer needed.

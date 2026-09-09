@@ -17,7 +17,8 @@ const WWW = path.join(ROOT, 'www');
 const HOME = os.homedir();
 
 /* ---- service registry (paths, no secrets) ---- */
-const HUM_DIR = process.env.HUM_DIR || path.join(HOME, 'projects/hum-testing');
+// vendored mercury (script + template config); runtime data lives beside it in the same dir
+const HUM_DIR = process.env.HUM_DIR || path.join(ROOT, 'mercury');
 const HUM_SCRIPT = 'mercury3.py';
 const HUM_LOG = path.join(HUM_DIR, 'run.log');
 const HUM_LOCK = path.join(HUM_DIR, '.mercury3.lock');
@@ -29,7 +30,8 @@ const HUM_MEMORY = path.join(HUM_DIR, 'memory.md');
 const BRIDGE_CANDIDATES = (process.env.BRIDGE_PORTS || '8789,8793').split(',').map(n => parseInt(n, 10));
 // where a bridge.js lives + how to run it (a cloner of THIS repo usually hasn't
 // set up bot-mn-1 separately — controlroom can own the whole stack)
-const BRIDGE_DIR = process.env.BRIDGE_DIR || path.join(HOME, 'projects/bot-mn-1');
+// vendored bridge lives INSIDE this repo — the clone is self-sufficient
+const BRIDGE_DIR = process.env.BRIDGE_DIR || path.join(ROOT, 'bridge');
 const BRIDGE_SCRIPT = path.join(BRIDGE_DIR, 'bridge.js');
 const BRIDGE_PORT = parseInt(process.env.BRIDGE_PORT, 10) || 8789;
 const BRIDGE_START = process.env.BRIDGE_START || `node bridge.js`;
@@ -94,14 +96,22 @@ let bridgeNonce = '';
 let bridgeNonceTs = 0;
 
 let whoamiCache = null;
-// bot token for proxied /discord calls — loaded once, never exposed by any endpoint
-const BRIDGE_ENV = process.env.BRIDGE_ENV || path.join(HOME, 'projects/bot-mn-1-debug/.env');
+// bot token: bridge/.env inside the repo (chmod 600, gitignored), then legacy paths
+const BRIDGE_ENVS = [
+  process.env.BRIDGE_ENV,
+  path.join(ROOT, 'bridge/.env'),
+  path.join(HOME, 'projects/bot-mn-1-debug/.env'),
+  path.join(HOME, 'projects/bot-mn-1/.env'),
+].filter(Boolean);
 const BOT_TOKEN = (() => {
-  try {
-    const env = fs.readFileSync(BRIDGE_ENV, 'utf8');
-    const m = /^TOKEN_BOT=(.+)$/m.exec(env);
-    return m ? m[1].trim() : '';
-  } catch { return ''; }
+  for (const envPath of BRIDGE_ENVS) {
+    try {
+      const env = fs.readFileSync(envPath, 'utf8');
+      const m = /^TOKEN_BOT=(.+)$/m.exec(env);
+      if (m) return m[1].trim();
+    } catch {}
+  }
+  return '';
 })();
 
 async function refreshBridge() {
@@ -168,6 +178,7 @@ function bridgePortUp() { return bridgePort === BRIDGE_PORT; }
 function bridgePid() { return bridgeProc && !bridgeProc.killed ? bridgeProc.pid : 0; }
 function bridgeStart() {
   if (!fs.existsSync(BRIDGE_SCRIPT)) return { ok: false, error: `bridge.js not found at ${BRIDGE_DIR} (set BRIDGE_DIR)` };
+  if (!BOT_TOKEN) return { ok: false, error: 'no bot token: copy bridge/.env.example to bridge/.env and set TOKEN_BOT' };
   if (bridgePortUp()) return { ok: true, msg: 'bridge already up' };
   if (bridgePid()) return { ok: true, msg: 'bridge starting…' };
   const out = fs.openSync(path.join(ROOT, '.tmp', 'bridge.log'), 'a');
@@ -211,6 +222,10 @@ function mercuryPid() {
 function mercuryStart() {
   if (mercuryPid()) return { ok: true, msg: 'already running' };
   if (!fs.existsSync(path.join(HUM_DIR, HUM_SCRIPT))) return { ok: false, error: 'mercury3.py not found' };
+  if (!fs.existsSync(path.join(HUM_DIR, '.env'))) return { ok: false, error: 'mercury/.env missing — create it with DISCORD_TOKEN=<user token> (gitignored)' };
+  if (!fs.existsSync(path.join(HUM_DIR, 'config.json'))) {
+    try { fs.copyFileSync(path.join(HUM_DIR, 'config.json.template'), path.join(HUM_DIR, 'config.json')); } catch {}
+  }
   const out = fs.openSync(HUM_LOG, 'a');
   const child = spawn('python3', ['-u', HUM_SCRIPT], {
     cwd: HUM_DIR, detached: true, stdio: ['ignore', out, out],
@@ -475,6 +490,7 @@ const server = http.createServer(async (req, res) => {
       const name = decodeURIComponent(p.slice('/api/backups/file/'.length));
       if (!/^[A-Za-z0-9._-]+\.json$/.test(name)) return json(res, 400, { ok: false, error: 'bad name' });
       const dirs = [
+        path.join(BRIDGE_DIR, 'data/messages/backups'),
         path.join(HOME, 'projects/bot-mn-1-debug/data/messages/backups'),
         path.join(HOME, 'projects/bot-mn-1/data/messages/backups'),
       ];
@@ -493,6 +509,7 @@ const server = http.createServer(async (req, res) => {
     if (p === '/api/backups' && req.method === 'GET') {
       // list channel backups from both clones' data dirs (running process decides which fills)
       const dirs = [
+        path.join(BRIDGE_DIR, 'data/messages/backups'),
         path.join(HOME, 'projects/bot-mn-1-debug/data/messages/backups'),
         path.join(HOME, 'projects/bot-mn-1/data/messages/backups'),
       ];

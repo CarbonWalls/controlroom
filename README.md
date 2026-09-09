@@ -19,8 +19,10 @@ mobile-first dark terminal aesthetic; tested at 320/390/1280 widths.
 ## run
 
 ```
+./start.sh                # detached with pid file; re-run says "already running"
 node server.js            # binds 127.0.0.1:8800
 PORT=9000 node server.js  # custom port
+npm start                 # same, via package.json
 ```
 
 env overrides: `HUM_DIR`, `BRIDGE_ENV` (path to the bridge's `.env` for the

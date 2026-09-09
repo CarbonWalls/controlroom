@@ -1,0 +1,9 @@
+{
+  "name": "controlroom",
+  "version": "1.0.0",
+  "description": "unified web panel: discord workspace + mercury selfbot controls (zero deps)",
+  "main": "server.js",
+  "scripts": { "start": "node server.js" },
+  "engines": { "node": ">=18" },
+  "license": "MIT"
+}
